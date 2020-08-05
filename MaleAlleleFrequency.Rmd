@@ -1,0 +1,155 @@
+---
+title: "Male allele frequency"
+author: "Casey"
+date: "03/08/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{bash}
+mkdir TestPool/ FullPool/
+ls
+```
+
+
+## make links to bam files from Roys alignment
+
+```{bash}
+inputDir=/powerplant/workspace/hrards/projects/hrtcdf/10.alignments/bwa
+outputDir1=/powerplant/workspace/hrtcdf/FSTs/TestPool
+outputDir2=/powerplant/workspace/hrtcdf/FSTs/FullPool
+cd $inputDir
+
+## Add symbolic links
+for TP in $(ls HL55*); do
+  ln -s /powerplant/workspace/hrards/projects/hrtcdf/10.alignments/bwa/$TP $outputDir1/$TP
+done
+
+
+for TP in $(ls HW5*); do
+  ln -s /powerplant/workspace/hrards/projects/hrtcdf/10.alignments/bwa/$TP $outputDir2/$TP
+done
+```
+
+```{bash}
+pwd
+module load bwa/0.7.12
+module load samtools/1.2
+module load "load openlava"
+```
+
+
+## Load reference genome with index files
+
+```{bash}
+pwd
+#ln -s /output/genomic/plant/Actinidia/chinensis/CK51F3_01/Genome/Assembly/PS1/1.69.0/Fasta/LGs_1_to_29.fasta
+ls
+```
+
+```{bash}
+module load openlava
+bsub samtools faidx LGs_1_to_29.fasta
+```
+
+```{bash}
+module load openlava
+bsub "java -jar /software/bioinformatics/picard-tools-2.2.4/picard.jar CreateSequenceDictionary \
+    R=LGs_1_to_29.fasta O=LGs_1_to_29.fasta.dict"
+
+```
+```{bash}
+index=/LGs_1_to_29.fasta.dict
+```
+
+Skipped "Try to work out loop for submitting alignment" part becasue Roy has aligned fasta's and made Bam files already. went straight toIndex Bams for IGV.
+
+##Index Bams for IGV
+```{bash}
+module load samtools/1.2
+samtools index --help
+```
+
+```{bash}
+inputDir=/powerplant/workspace/hrards/projects/hrtcdf/10.alignments/bwa/
+outputDir1=/powerplant/workspace/hrtcdf/FSTs/TestPool
+outputDir2=/powerplant/workspace/hrtcdf/FSTs/FullPool
+
+# cd $outputDir1/
+
+module load samtools/1.2
+module load openlava/3.2
+
+
+for BAM in $(find $outputDir1 -name "*.bam"); do
+  bsub -o log_stdout1.out -e log_stderr1.err "samtools index -b ${BAM}"
+done
+
+for BAM in $(find $outputDir2 -name "*.bam"); do
+  bsub -o log_stdout2.out -e log_stderr2.err "samtools index -b ${BAM}"
+done
+
+#for BAM in $(ls HW5*) 
+#    do bsub -o $outputDir2 "samtools index -b  ${BAM}" 
+#done
+```
+Run mpileup¶
+from popoolation howto
+
+samtools mpileup -B -Q 0 -f wg/2R.chr pop1.bam pop2.
+bam > p1-2.mpileup
+```{bash}
+mkdir -p -v mpileup/log
+```
+##Make an indexed reference
+```{bash}
+module load samtools/1.2
+module load openlava
+bsub "samtools faidx LGs_1_to_29.fasta"
+```
+```{bash}
+ls -l LG*
+```
+
+Submit to Cluster
+NB would be best to parallel by use of -r option to call by chromsome
+
+could probably tune better for indel realignment
+see http://samtools.sourceforge.net/mpileup.shtml
+and also pipe direct into Varscan
+Adjust -m and -F to control when to initiate indel realignment (requiring r877+). Samtools only finds INDELs where there are sufficient reads containing the INDEL at the same position. It does this to avoid excessive realignment that is computationally demanding. The default works well for many low-coverage samples but not for, say, 500 exomes. In the latter case, using -m 3 -F 0.0002 (3 supporting reads at minimum 0.02% frequency) is necessary to find singletons.
+
+#Submit One Big Job
+```{bash}
+bsub  -o ./mpileup/mpileup.out -e ./mpileup/mpileup.err -n 8  -J POOLmpileup  \
+    "samtools mpileup -B -Q 0 -f ./LGs_1_to_29.fasta -o ./mpileup/P1-5.mpileup \
+    ./align/pool1.merged.bam   ./align/pool2.merged.bam  ./align/pool3.merged.bam  ./align/pool4.merged.bam"
+```
+
+```{bash}
+module load openlava
+bjobs
+```
+```{bash}
+outputDir1=/powerplant/workspace/hrtcdf/FSTs/TestPool
+ls $outputDir1
+```
+
+
+```{bash}
+ls /powerplant/workspace/hrards/projects/hrtcdf/10.alignments/bwa
+```
+```{bash}
+
+```
+```{bash}
+inputDir=/powerplant/workspace/hrards/projects/hrtcdf/10.alignments/bwa
+outputDir1=/powerplant/workspace/hrtcdf/FSTs/TestPool
+outputDir2=/powerplant/workspace/hrtcdf/FSTs/FullPool
+cd $outputDir1
+rm core*
+ls
+```
