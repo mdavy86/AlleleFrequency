@@ -4,7 +4,7 @@ author: "Casey"
 date: "03/08/2020"
 output: html_document
 ---
-
+##git cannot access .gitconfig move to documents or move gitconfig to c:workspace/casey-s-repository.
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -13,7 +13,6 @@ knitr::opts_chunk$set(echo = TRUE)
 mkdir TestPool/ FullPool/
 ls
 ```
-
 
 ## make links to bam files from Roys alignment
 
@@ -40,29 +39,32 @@ module load bwa/0.7.12
 module load samtools/1.2
 module load "load openlava"
 ```
+```{bash}
+
+```
 
 
 ## Load reference genome with index files
 
 ```{bash}
 pwd
-#ln -s /output/genomic/plant/Actinidia/chinensis/CK51F3_01/Genome/Assembly/PS1/1.69.0/Fasta/LGs_1_to_29.fasta
-ls
+#ln -s /output/genomic/plant/Actinidia/chinensis/Russell/Genome/Assembly/Russell_V2a
+ls -l
 ```
 
 ```{bash}
 module load openlava
-bsub samtools faidx LGs_1_to_29.fasta
+bsub samtools faidx Russell_V2a.fasta
 ```
 
 ```{bash}
 module load openlava
 bsub "java -jar /software/bioinformatics/picard-tools-2.2.4/picard.jar CreateSequenceDictionary \
-    R=LGs_1_to_29.fasta O=LGs_1_to_29.fasta.dict"
+    R=Russell_V2a.fasta O=Russell_V2a.dict"
 
 ```
 ```{bash}
-index=/LGs_1_to_29.fasta.dict
+index=/Russell_V2a.fasta.dict
 ```
 
 Skipped "Try to work out loop for submitting alignment" part becasue Roy has aligned fasta's and made Bam files already. went straight toIndex Bams for IGV.
@@ -91,16 +93,13 @@ done
 for BAM in $(find $outputDir2 -name "*.bam"); do
   bsub -o log_stdout2.out -e log_stderr2.err "samtools index -b ${BAM}"
 done
-
-#for BAM in $(ls HW5*) 
-#    do bsub -o $outputDir2 "samtools index -b  ${BAM}" 
-#done
 ```
-Run mpileup¶
-from popoolation howto
+#Run mpileup¶
+#from popoolation howto
 
-samtools mpileup -B -Q 0 -f wg/2R.chr pop1.bam pop2.
-bam > p1-2.mpileup
+#samtools mpileup -B -Q 0 -f wg/2R.chr pop1.bam pop2.
+#bam > p1-2.mpileup
+
 ```{bash}
 mkdir -p -v mpileup/log
 ```
@@ -108,10 +107,13 @@ mkdir -p -v mpileup/log
 ```{bash}
 module load samtools/1.2
 module load openlava
-bsub "samtools faidx LGs_1_to_29.fasta"
+bsub "samtools faidx Russell_V2a.fasta"
 ```
+
 ```{bash}
-ls -l LG*
+for BAM in $(ls *.bam) 
+    do bsub "samtools index -b  ${BAM}"
+    done
 ```
 
 Submit to Cluster
@@ -129,6 +131,22 @@ bsub  -o ./mpileup/mpileup.out -e ./mpileup/mpileup.err -n 8  -J POOLmpileup  \
     ./align/pool1.merged.bam   ./align/pool2.merged.bam  ./align/pool3.merged.bam  ./align/pool4.merged.bam"
 ```
 
+## Get a test file of Bam files to be run for asub
+```{bash} 
+cd /powerplant/workspace/hrtcdf/FSTs
+Dir1=TestPool
+Dir2=FullPool
+
+#cd /powerplant/workspace/hrtcdf/FSTs/$Dir1
+#  for bam in *.bam ; do echo "/powerplant/workspace/hrtcdf/$Dir1/$bam" >>$Dir1"Bams.txt";
+#  done
+  
+cd /powerplant/workspace/hrtcdf/FSTs/$Dir2
+  for bam in *.bam; do echo "/powerplant/workspace/hrtcdf/GBSremap/Alignments/$Dir2/$bam" >>$Dir2.txt;
+  done
+
+```
+
 ```{bash}
 module load openlava
 bjobs
@@ -140,11 +158,13 @@ ls $outputDir1
 
 
 ```{bash}
-ls /powerplant/workspace/hrards/projects/hrtcdf/10.alignments/bwa
+pwd
 ```
 ```{bash}
-
+cd ~
+ls
 ```
+
 ```{bash}
 inputDir=/powerplant/workspace/hrards/projects/hrtcdf/10.alignments/bwa
 outputDir1=/powerplant/workspace/hrtcdf/FSTs/TestPool
@@ -152,4 +172,18 @@ outputDir2=/powerplant/workspace/hrtcdf/FSTs/FullPool
 cd $outputDir1
 rm core*
 ls
+```
+```{bash}
+echo "# Allele-Frequency" >> README.md
+```
+git init
+git add your files and README.md
+git commit -m "first commit"
+git remote add origin https://github.com/caseyflay/Allele-Frequency.git
+https://github.com/caseyflay/AlleleFrequency/tree/TestPool
+git push -u origin master
+
+```{bash}
+module load openlava
+bjobs
 ```

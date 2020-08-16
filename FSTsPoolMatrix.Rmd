@@ -1,0 +1,43 @@
+---
+title: "Pedigree map"
+author: "Casey"
+date: "13/12/2019"
+output:   
+  github_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(future)
+library(future.apply)
+library(qtl)
+library(RLinuxModules)
+plan(multicore)
+module("load R/3.6.1")
+```
+
+
+## Hymmi suggested input <- list() instead of input$cropSel <- 5
+## plotting relatednes matrix for pools of DNA based on males
+##Fst pool CK02_01
+```{r}
+library(PFRBreedR)
+library(ActR)
+
+input$cropSel <- 5
+Set1 <- c(
+'CK02_01',
+'CK17_02',
+'CK20_01',
+'Bejing #36',
+'CK51_01',
+'CK15_03')
+
+(Set1 <-ActR::querySynonyms (Set1))
+as.character(unique(ActR::queryPedItem(Set1)$GenotypeID))
+
+EBTree(5,PI=as.character(Set1$GenotypeID))
+pedigrees <- EBPedigree(crpId=5, PI=Set1)
+coanFn(Set1, myPed=pedigrees) 
+```
