@@ -1,0 +1,173 @@
+---
+title: "Male allele frequency"
+author: "Casey"
+date: "03/08/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(RLinuxModules)
+library(data.table)
+library(glue)
+library(here)
+library(tidyverse)
+library(stringr)
+module("load openlava asub bwa/0.7.12 samtools/1.9 bcftools/1.10.2")
+```
+
+```{r}
+mainDir <- "/powerplant/workspace/hrtcdf/FSTs/"
+subDir <- "bamlink"
+royDir <- "/workspace/hrards/projects/hrtcdf/10.alignments/bwa"
+outDir <- str_c(mainDir, subDir, sep = "", collapse = TRUE)
+outDir
+
+if (dir.exists(mainDir)){
+    setwd(file.path(mainDir, subDir))
+} else {
+    dir.create(file.path(mainDir, subDir))
+    setwd(file.path(mainDir, subDir))
+}
+
+tpoolfiles <- dir(royDir, pattern = "^HL55WDRXX", full.names = TRUE, include.dirs = TRUE)
+tpoolfiles
+
+file.symlink (tpoolfiles, outDir)
+## cant seem to get the full pathname into the symlink file. sorted(well dir not attached untill next step.)
+```
+```{bash}
+cd /powerplant/workspace/hrtcdf/FSTs/TestPool/bamlinkindexed
+for bam in $(ls H*) ;do 
+       input="/powerplant/workspace/hrtcdf/FSTs/bamlinkindexed/${bam}"
+       logDir="/powerplant/workspace/hrtcdf/FSTs/TestPool/bamlinkindexed/logDir"
+       outDir="/powerplant/workspace/hrtcdf/FSTs/TestPool/bamlinkindexed"
+       bsub -n 8 -o $logDir/${bam}.log -e $logDir/${bam}.err "samtools index $bam"
+       done
+```
+
+```{r transform filenames to sample and directory for data.table}
+files <- dir("/workspace/hrards/projects/hrtcdf/10.alignments/bwa", pattern = "^HL55WDRXX", full.names = TRUE)
+apfiles <- str_replace(files, "HL55WDRXX_" , "HL55WDRXX_&")
+
+dt <- {data.table(apfiles) %>%
+  separate(apfiles, into = c("dir", "sample"), sep = "&", fill = "left") %>%
+  mutate("version" = str_extract(dir, regex("/")))
+}
+
+colnames(dt) <- c("dir", "sample", "version")
+write.table(dt, 'testpool.tsv')
+```
+
+```{r transform filenames to sample, lane and suffix for data.table from link}
+#setwd("/powerplant/workspace/hrtcdf/FSTs/TestPool/bamlinkindexed")
+wd <- ("/powerplant/workspace/hrtcdf/FSTs/TestPool/bamlinkindexed/")
+wd
+pattern <- c(".bai", "log", ".tsv")
+f <- grep(paste(pattern, collapse = "|"), list.files(path="."),  invert=TRUE, value=TRUE)
+f
+str1 <- str_replace(f, "XX_" , "XX_&")
+str2 <- str_replace(str1, "_L" , "&_L")
+str3 <- str_replace(str2, ".bam" , "&.bam&")
+str3
+lindts <- {data.table(str3) %>%
+  separate(str3, into = c("HL55", "sample", "lane", "bam", "version"), sep = "&", fill = "left") %>%
+  mutate("version" = str_extract(sample, regex("/")))
+}
+lindts
+
+colnames(lindts) <- c("HL55", "sample", "lane", "bam", "version" )
+#write.table(lindts, 'linkpool.tsv')
+```
+
+```{r run-mileup for chr25}
+submit_mpileup <- function(reference = "*.fa.gz", output = c(), bamfiles = c(), job.init = "asub", job.opts = "-q normal") {
+  cmd <- "bcftools mpileup -B -Q 0 -f {reference} -r chr25 -a {mpileupTags} {bamfiles} -Ou | bcftools call -f {bcfcallTags} -p {pvalThres} -m -A -Oz -o {output}"
+  tmpf <- tempfile(pattern = "submit_mileup.", fileext = ".sh")
+  writeLines(text = c(glue(cmd)), con = tmpf)
+  submit <- "{job.init} {job.opts} {tmpf}"
+  system(glue(submit), intern = TRUE)
+}
+mpileupTags <- "DP,AD,ADF,ADR,SP,INFO/AD,INFO/ADF,INFO/ADR"
+bcfCallTags <- "GQ,GP"
+  pvalThres <- 0.99
+
+bamfiles <- paste(lindts$HL55, lindts$sample, lindts$lane, lindts$bam, sep = "")
+bamfiles
+sample   <- paste(lindts$sample,lindts$lane, sep = "")
+sample   <- paste(tools::file_path_sans_ext(sample), "c25bam.gz", sep = ".")
+sample
+
+reference <- dir("/workspace/hrards/projects/hrtcdf/genome/fasta", pattern = ".*\\.gz$", full.names = TRUE)
+reference
+file.exists(bamfiles)
+#file.exists(reference)
+
+submit_mpileup(reference = reference, output = sample, bamfiles = bamfiles)
+```
+
+
+```{bash}
+zcat CK02_01_L001.bam.gz | grep -v "##" | cut -f1,2,3,4,5,6,7,8,9,10 | less
+```
+
+
+
+##change file locations and work out the minor allele frequency for each of the pools.
+##minor allele frequency, average depth, and fraction_missing will need to be adjusted for each pool.
+## dont include INFO/F_MISSING as there is no hedder for it. added to chr25 set
+## there was no allele frequency from mpileup.... it wasn't added as a tag. go back down the snake to add.
+
+```{bash #filter}
+cd "/powerplant/workspace/hrtcdf/FSTs/TestPool"
+if  [ ! -d "15_filter" ]; then mkdir "15_filter" ; fi
+
+t=8
+#set=M.01_d5_ld100_q10_f0.8_g10
+set=f99q5
+for bam in $(ls CK02_01_L001*) ;do ## just leave the CK* star for full run.
+       input="/powerplant/workspace/hrtcdf/FSTs/TestPool/${bam}"
+       logDir="/powerplant/workspace/hrtcdf/FSTs/TestPool/15_filter/logDir"
+       outDir="/powerplant/workspace/hrtcdf/FSTs/TestPool/15_filter"
+       if  [ ! -d "15_filter/logDir" ]; then mkdir "15_filter/logDir" ; fi
+
+#bsub -n $t -o $logDir/${bam}.log -e $logDir/${bam}.err "bcftools stats $input > $input.stats"
+
+bsub -n $t -o $logDir/${set}${bam}.log -e $logDir/${set}${bam}.err "bcftools view -i 'AVG(INFO/DP)>5 && AVG(INFO/DP)<99 && QUAL>=5' $bam | bcftools filter -g10 -G10 -Oz -o $outDir/${set}${bam} && bcftools stats $outDir/${set}${bam} > $outDir/${set}${bam}.stats"
+
+done
+```
+
+##Add RG info https://github.com/Actinidia/FlavourGenetics/blob/afe4f2334ca7a3a95b1738e16e4c63e988f9aef6/DryMatter/ExpRequestor10619/2019-07-29-ER10619-Align-QC.ipynb
+## helpfull-- https://www.poftut.com/linux-cut-command-examples/
+```{bash}
+OUTPUT="/powerplant/workspace/hrtcdf/FSTs/TestPool/15_filter"
+inDir="/powerplant/workspace/hrtcdf/FSTs/TestPool/"
+
+for SAMP in $inDir/$(ls CK*) ;do
+name=`basename $SAMP .bam`
+lane=$(echo `basename $SAMP .bam.gz` | cut -c11-)
+SM=$(echo `basename $SAMP .bam.gz` | cut -c-12)
+RG=${SM}_$lane
+line=$(echo -e "-r 'ID:${RG}' -r 'LB:1' -r 'SM:${SM}'")
+#echo $name
+#echo $SM
+#echo $RG
+#echo $lane
+#echo $line
+
+echo "samtools addreplacerg ${line} -o $OUTPUT/${name}.RG.bam $SAMP"
+done | bsub 
+```
+
+
+```{bash}
+pwd
+##Use these in terminal
+## zcat CK02_01_L001.bcf.gz | grep -v "##" | cut -f1,2,3,4,5,6,7,8,9,10 | less -n 20
+## zcat bwa_subset_filtered.vcf | grep '>' | more
+```
+
+
+
+

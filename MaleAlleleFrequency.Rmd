@@ -131,18 +131,41 @@ bsub  -o ./mpileup/mpileup.out -e ./mpileup/mpileup.err -n 8  -J POOLmpileup  \
     ./align/pool1.merged.bam   ./align/pool2.merged.bam  ./align/pool3.merged.bam  ./align/pool4.merged.bam"
 ```
 
+```{r run-mileup}
+submit_mpileup <- function(reference = "*.fa.gz", output = c(), bamfiles = c(), job.init = "asub", job.opts = "-q normal") {
+  cmd <- "samtools mpileup -B -Q 0 -f {reference} -o {output} {bamfiles}"
+  tmpf <- tempfile(pattern = "submit_mileup.", fileext = ".sh")
+  writeLines(text = c(glue(cmd)), con = tmpf)
+  submit <- "{job.init} {job.opts} {tmpf}"
+  system(glue(submit), intern = TRUE)
+}
+
+data.table::fread(file = "/workspace/hrards/projects/hrtcdf/targetsfile")
+
+bamfiles <- dir("/workspace/hrards/projects/hrtcdf/10.alignments/bwa", full.names = TRUE)
+bamfiles
+reference <- dir("/workspace/hrards/projects/hrtcdf/genome/fasta", pattern = ".*\\.gz$", full.names = TRUE)
+
+reference
+
+submit_mpileup(reference = reference, output = "test.txt", bamfiles = paste0(bamfiles, collapse = " "))
+
+```
+
+
 ## Get a test file of Bam files to be run for asub
 ```{bash} 
-cd /powerplant/workspace/hrtcdf/FSTs
 Dir1=TestPool
 Dir2=FullPool
 
-#cd /powerplant/workspace/hrtcdf/FSTs/$Dir1
-#  for bam in *.bam ; do echo "/powerplant/workspace/hrtcdf/$Dir1/$bam" >>$Dir1"Bams.txt";
-#  done
+cd /powerplant/workspace/hrtcdf/FSTs/$Dir1
+  for bam in *.bam; do 
+  echo "/powerplant/workspace/hrtcdf/$Dir1/$bam" >>$Dir1"Bam.txt";
+  done
   
 cd /powerplant/workspace/hrtcdf/FSTs/$Dir2
-  for bam in *.bam; do echo "/powerplant/workspace/hrtcdf/GBSremap/Alignments/$Dir2/$bam" >>$Dir2.txt;
+  for bam in *.bam; do 
+  echo "/powerplant/workspace/hrtcdf/$Dir2/$bam" >>$Dir2"Bam.txt";
   done
 
 ```
