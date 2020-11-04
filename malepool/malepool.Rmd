@@ -1,0 +1,166 @@
+---
+title: "testpoolmpile"
+author: "Casey Flay"
+date: "30/09/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(RLinuxModules)
+library(data.table)
+library(glue)
+library(here)
+library(tidyverse)
+library(stringr)
+library(ggplot2)
+library(magrittr)
+module("load openlava asub bwa/0.7.12 samtools/1.9 bcftools/1.10.2 vcftools")
+```
+
+```{r}
+mainDir <- "/powerplant/workspace/hrtcdf/FSTs/"
+subDir <- "malepool"
+royDir <- "/workspace/hrards/projects/hrtcdf/10.alignments/bwa"
+outDir <- str_c(mainDir, subDir, sep = "", collapse = TRUE)
+outDir
+
+if (dir.exists(mainDir)){
+    setwd(file.path(mainDir, subDir))
+} else {
+    dir.create(file.path(mainDir, subDir))
+    setwd(file.path(mainDir, subDir))
+}
+
+malepoolfiles <- dir(royDir, pattern = "^HW5YYDSXX", full.names = TRUE, include.dirs = TRUE)
+
+file.symlink (tpoolfiles, outDir)
+## we don't need the full pathname into the symlink file.
+```
+
+```{r transform filenames to sample, lane and suffix for data.table from link}
+wd <- ("/powerplant/workspace/hrtcdf/FSTs/malepool/")
+pattern <- c(".bai", ".txt", ".Rmd")
+f <- grep(paste(pattern, collapse = "|"), list.files(path="."),  invert=TRUE, value=TRUE)
+str1 <- str_replace(f, "XX_" , "XX_&")
+str2 <- str_replace(str1, "_L" , "&_L")
+str3 <- str_replace(str2, ".bam" , "&.bam&")
+
+malepooldt <- {data.table(str3) %>%
+  separate(str3, into = c("HL55", "sample", "lane", "bam", "version"), sep = "&", fill = "left") %>%
+  mutate("version" = str_extract(sample, regex("/")))
+}
+malepooldt
+
+colnames(malepooldt) <- c("HL55", "sample", "lane", "bam", "version" )
+#write.table(malepooldt, 'linkpool.tsv')
+```
+
+```{bash index.bai}
+t=8
+#inDir="/powerplant/workspace/hrtcdf/FSTs/TestPool/bamlinkindexed"
+logDir="/powerplant/workspace/hrtcdf/FSTs/TestPool/bamlinkindexed/logDir"
+if  [ ! -d  "logDir" ]; then mkdir "logDir" ; fi
+
+for vcf in $(ls *.bam); do
+bsub -n $t -o $logDir/$vcf.err -e $logDir/$vcf.err "samtools index $vcf > $vcf.bai"
+#echo $vcf
+done
+```
+
+## use samtools for indexing normal?, tabix and stats.
+```{bash}
+t=8
+logDir="/powerplant/workspace/hrtcdf/FSTs/TestPool/bamlinkindexed/logDir"
+if  [ ! -d  "logDir" ]; then mkdir "logDir" ; fi
+
+for vcf in $(ls *chr25.bcf.gz); do
+#bsub -n $t -o $logDir/$vcf.log -e $logDir/$vcf.err "bcftools stats $vcf > ${vcf}.stats "
+bsub -n $t -o $logDir/$vcf.log -e $logDir/$vcf.err "bcftools index -t $vcf"
+#bsub -n $t -o $logDir/$vcf.log -e $logDir/$vcf.err "samtools index $vcf"
+#echo c${vcf}
+done
+```
+
+```{r run-mileup for chr25}
+submit_mpileup <- function(reference = "*.fa.gz", output = c(), bamfiles = c(), job.init = "asub", job.opts = "-q normal") {
+  cmd <- "bcftools mpileup -B -Q 0 -f {reference} -r chr25 -a {mpileuptags} {bamfiles} -Ou | bcftools call -f {bcfcalltags} -p {pvalThres} -m -A -Oz -o {output}"
+  tmpf <- tempfile(pattern = "submit_mileup.", fileext = ".sh")
+  writeLines(text = c(glue(cmd)), con = tmpf)
+  submit <- "{job.init} {job.opts} {tmpf}"
+  system(glue(submit), intern = TRUE)
+}
+mpileuptags <- "DP,AD,ADF,ADR,SP,INFO/AD,INFO/ADF,INFO/ADR"
+bcfcalltags <- "GQ,GP"
+  pvalThres <- 0.99
+
+bamfiles    <- paste(malepooldt$HL55, malepooldt$sample, malepooldt$lane, malepooldt$bam, sep = "")
+bamfiles
+out         <- paste(malepooldt$sample, "chr25.vcf.gz", sep = "_")
+reference   <- dir("/workspace/hrards/projects/hrtcdf/genome/fasta", pattern = ".*\\.gz$", full.names = TRUE)
+#file.exists(bamfiles)
+#file.exists(reference)
+submit_mpileup(reference = reference, output = out, bamfiles = bamfiles)
+```
+
+#https://github.com/caseyflay/HighHealth/blob/master/QTLSeqr/CheckAlleleFreqs.Rmd
+##Calculate AF over all pools on CHR1
+```{r}
+bcfcmd <- "bcftools query  -f '%CHROM\t%POS[\t%DP\t%AD]\n' D6_chr25.vcf.gz |awk '{print $1,$2,($4 + $6+ $8 + $10)/($3 + $5  + $7 + $9)}'"
+DT <- fread(cmd=bcfcmd,col.names = c('CHR','POS','AF'))
+```
+
+```{r message=FALSE, warning=FALSE}
+DT[,qplot(AF)]
+```
+
+```{bash}
+#grep "AF" CK02_01_chr25.bcf.gz
+#grep --help
+#awk CK02_01_chr25.bcf.gz $1 | $2 'chr25:1737600'
+##get header from .gz references: zcat Russell_V2a.fa.gz | grep '>' | less
+#view .gz vcf files zcat CK02_01_chr25.bcf.gz | head -n 30
+
+#zcat CK02_01_chr25.bcf.gz | grep -v "386373" | cut -f1,2,3,4,5,6,7,8,9,10 | head -n 30
+
+#zcat CK02_01_chr25.bcf.gz | awk -v "AD" | cut -f1,2,3,4,5,6,7,8,9,10 | head -n 30
+```
+Andrew Catanach: 
+tail -n+2 /powerplant/workspace/cflasc/Kiwifruit/chinensis/20200827_Fisher_tests_for_Y_associated_SNPs/04.significant_p_values/Russell_V2a.chromosomes.and.unassigned_chr25_genotypes_fisher.out \
+| sed 's/,/\t/g' | awk '$2>8 {print}' | awk -v OFS="\t" '{print "chr25", $1-1, $1}' 
+
+#See awk '$2>8...., the smaller the number the larger the number of sites returned (and the looser the association) 
+#You could copy the file /powerplant/workspace/cflasc/Kiwifruit/chinensis/20200827_Fisher_tests_for_Y_associated_SNPs/04.significant_p_values/Russell_V2a.chromosomes.and.unassigned_chr25_genotypes_fisher.out 
+#That will give you all associated sites, then filter for those with the highest -log10_P values
+```{bash}
+tail -n+2 /powerplant/workspace/cflasc/Kiwifruit/chinensis/20200827_Fisher_tests_for_Y_associated_SNPs/04.significant_p_values/Russell_V2a.chromosomes.and.unassigned_chr25_genotypes_fisher.out \
+| sed 's/,/\t/g' | awk '$2>9.3{print}' | awk -v OFS="\t" '{print "chr25", $1-1, $1}' 
+```
+
+```{bash}
+t=8
+logDir="/powerplant/workspace/hrtcdf/FSTs/malepool/logDir"
+
+for vcf in $(ls *chr25.vcf.gz); do
+bsub -n $t -o $logDir/$vcf.log -e $logDir/$vcf.err "zgrep '#CHROM' $vcf >> ${vcf}_depth.txt && 
+zgrep '[[:blank:]]11268[[:blank:]]' $vcf >> ${vcf}_depth.txt && 
+zgrep '[[:blank:]]386412[[:blank:]]' $vcf >> ${vcf}_depth.txt &&
+zgrep '[[:blank:]]386444[[:blank:]]' $vcf >> ${vcf}_depth.txt && 
+zgrep '[[:blank:]]11268[[:blank:]]' $vcf >> ${vcf}_depth.txt && 
+zgrep '[[:blank:]]11270[[:blank:]]' $vcf >> ${vcf}_depth.txt && 
+zgrep '[[:blank:]]11273[[:blank:]]' $vcf >> ${vcf}_depth.txt && 
+zgrep '[[:blank:]]11274[[:blank:]]' $vcf >> ${vcf}_depth.txt"
+done
+```
+
+```{bash}
+#echo 386374 386412 386444 10841 10851 5186 >> SNP_list.txt 
+#zcat input_file.vcf.gz | vcftools --vcf - --site-pi --positions SNP_list.txt --out nucleotide_diversity
+#zcat A1_chr25.bcf.gz | vcftools --vcf - --site-pi --positions SNP_list.txt --out malepool
+#vcftools --gzvcf A1_chr25.vcf.gz --freq --positions SNP_list.txt --out $vcf
+#done
+```
+#git add 'filename' 
+#git commit 
+#git push origin master
+
