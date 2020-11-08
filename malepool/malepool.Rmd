@@ -71,10 +71,10 @@ done
 ## use samtools for indexing normal?, tabix and stats.
 ```{bash}
 t=8
-logDir="/powerplant/workspace/hrtcdf/FSTs/TestPool/bamlinkindexed/logDir"
+logDir="/powerplant/workspace/hrtcdf/FSTs/malepool/logDir"
 if  [ ! -d  "logDir" ]; then mkdir "logDir" ; fi
 
-for vcf in $(ls *chr25.bcf.gz); do
+for vcf in $(ls *chr25.vcf.gz); do
 #bsub -n $t -o $logDir/$vcf.log -e $logDir/$vcf.err "bcftools stats $vcf > ${vcf}.stats "
 bsub -n $t -o $logDir/$vcf.log -e $logDir/$vcf.err "bcftools index -t $vcf"
 #bsub -n $t -o $logDir/$vcf.log -e $logDir/$vcf.err "samtools index $vcf"
@@ -141,16 +141,10 @@ tail -n+2 /powerplant/workspace/cflasc/Kiwifruit/chinensis/20200827_Fisher_tests
 t=8
 logDir="/powerplant/workspace/hrtcdf/FSTs/malepool/logDir"
 
-for vcf in $(ls *chr25.vcf.gz); do
-bsub -n $t -o $logDir/$vcf.log -e $logDir/$vcf.err "zgrep '#CHROM' $vcf >> ${vcf}_depth.txt && 
-zgrep '[[:blank:]]11268[[:blank:]]' $vcf >> ${vcf}_depth.txt && 
-zgrep '[[:blank:]]386412[[:blank:]]' $vcf >> ${vcf}_depth.txt &&
-zgrep '[[:blank:]]386444[[:blank:]]' $vcf >> ${vcf}_depth.txt && 
-zgrep '[[:blank:]]11268[[:blank:]]' $vcf >> ${vcf}_depth.txt && 
-zgrep '[[:blank:]]11270[[:blank:]]' $vcf >> ${vcf}_depth.txt && 
-zgrep '[[:blank:]]11273[[:blank:]]' $vcf >> ${vcf}_depth.txt && 
-zgrep '[[:blank:]]11274[[:blank:]]' $vcf >> ${vcf}_depth.txt"
-done
+
+bsub -n $t -o $logDir/$vcf.log -e $logDir/$vcf.err "zgrep '#CHROM' D6_chr25.vcf.gz > '1chr25_tail.txt' && 
+zcat D6_chr25.vcf.gz | tail -n 20 >> '1chr25_tail.txt' "
+
 ```
 
 ```{bash}
@@ -160,7 +154,40 @@ done
 #vcftools --gzvcf A1_chr25.vcf.gz --freq --positions SNP_list.txt --out $vcf
 #done
 ```
-#git add 'filename' 
+
+
+#Try make it a bit more bioinformatic
+##zcat CKRussell_piled.vcf.gz | head -n 100
+##CHROM  POS     ID      REF     ALT     QUAL    FILTER  INFO    FORMAT  D6
+##chr1    1       .       C       .       63      .       DP=1;ADF=1;ADR=0;AD=1;MQ0F=0;AN=2;DP4=1,0,0,0;MQ=33     GT:DP:SP:ADF:ADR:AD     0/0:1:0:1:0:1
+##[] Format fields must be enclosed in brackets to loop over all samples
+#bcfcmd <- "bcftools query  -f '%CHROM\t%POS[\t%DP\t%AD]\n' ../PoolSeq/mpileup/CHR1.cns.vcf.gz| awk '{print $1,$2,($4 + $6+ 
+
+working on this second one, need to pipe to .txt and get correct male%
+```{r}
+#piledvcf <- paste(lindts$sample, "piled.vcf.gz", sep = "_") -i 'INFO/MAF>0.0001'
+bcfcmd <- "bcftools query A1_chr25.vcf.gz -r 'chr25:1-1000000'  -f '[%SAMPLE]\t%CHROM\t%POS\t%REF\t%ALT\t%DP\t%AD\n' | awk '{print $1, $2, $3, $4, $5, $6, $7, ($7+$9+$11+$13), ($8+$10+$12+$14), ($6+$8+$10+$12)/($7+$9+$11+$13), ($7+$9+$11+$13)/$6}'"
+DTc <- fread(cmd=bcfcmd, col.names = c('SAMPLE','CHROM','POS','REF','ALT','DP','AD','REFal','ALTal','AF','MaleFreq'))
+#DTc %>% write_tsv("test.txt", col_names = TRUE)
+#DTc %>% write.table("malefreqDT.txt", append = FALSE, sep = " ", dec = ".", row.names = TRUE, col.names = TRUE)
+qplot(POS, MaleFreq, data = DTc, color = DP)
+```
+
+
+```{r}
+#DTc[,qplot(POS, MaleFreq)]
+#MDT <- 'malefreqDT.txt'
+qplot(POS, MaleFreq, data = DTc, color = DP)
+#ggplot(data = MDT['POS', 'MaleFreq'], mapping = aes(x= 'POS', y= 'MaleFreq'))
+
+```
+###todo need to write to data.frame to capture the data.
+Error in `[.data.table`(DTc, POS, MaleFreq) : POS is not found in calling scope but it is a column of type integer. If you wish to select rows where that column contains TRUE, or perhaps that column contains row numbers of itself to select, try DT[(col)], DT[DT$col], or DT[col==TRUE] is particularly clear and is optimized. When the first argument inside DT[...] is a single symbol (e.g. DT[var]), data.table looks for var in calling scope.
+
+##zcat CKRussell_piled.vcf.gz | head -n 100
+
+
+#git add 'filename'
 #git commit 
 #git push origin master
 
