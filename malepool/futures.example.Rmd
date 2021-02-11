@@ -1,0 +1,25 @@
+---
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Futures
+
+```{r cars}
+library("future")
+library("future.batchtools")
+```
+
+## Example
+
+```{r pressure, echo=FALSE}
+plan(batchtools_openlava)
+v %<-% {
+  cat("Hello world!\n")
+  3.14
+}
+v
+```

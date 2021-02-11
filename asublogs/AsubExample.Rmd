@@ -1,0 +1,136 @@
+---
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, comment = "#>")
+library(RLinuxModules)
+library(data.table)
+library(glue)
+library(here)
+module("load bwa samtools openlava asub")
+```
+
+## Targets file
+
+```{r sample-sheet-2-targets-file, include = FALSE}
+samples         <- fread("/workspace/hrards/projects/hrtcdf/sample-sheet.tsv", header = FALSE)
+names(samples)  <- c("class", "path")
+pilot <- samples["pilot", on="class"]
+main <- samples["main", on="class"]
+
+main[,c("file", "rgid", "sample", "pair"):={
+  x       <- basename(path)
+  moniker <- tools::file_path_sans_ext(x)
+  moniker <- tools::file_path_sans_ext(moniker)
+  p       <- strsplit(moniker, "_")[[1]]
+  id      <- paste0(p[c(3,1,2,5)], collapse = "_")
+  samp    <- paste0(p[1:2], collapse = "_")
+  pair    <- gsub(pattern = "R", replacement = "", x = p[6])
+  list(x, id, samp, as.integer(pair))
+  }, by=path]
+main
+
+pilot[,c("file", "rgid", "sample", "pair"):={
+  x       <- basename(path)
+  moniker <- tools::file_path_sans_ext(x)
+  moniker <- tools::file_path_sans_ext(moniker)
+  p       <- strsplit(moniker, "_")[[1]]
+  id      <- paste0(p[c(2,1,4)], collapse = "_")
+  samp    <- paste0(p[1], collapse = "_")
+  pair    <- gsub(pattern = "R", replacement = "", x = p[5])
+  list(x, id, samp, as.integer(pair))
+  }, by=path]
+pilot
+
+# resolve pairs with a self join
+pilot_tf <- pilot[pilot[,.(path, rgid, sample, pair)], on=.(rgid, sample, pair < pair)][!is.na(file)]
+main_tf <- main[main[,.(path, rgid, sample, pair)], on=.(rgid, sample, pair < pair)][!is.na(file)]
+
+# tidy up, renaming and selecting columns required
+clean_targetsfile <- function(draft) {
+  colnames(draft) <- c("class", "pair1", "file", "rgid", "sample", "pair", "pair2")
+  
+  draft <- draft[,.(class, rgid, sample, pair1, pair2)]
+  draft <- draft[, pair1:=normalizePath(file.path(here(), pair1))]
+  draft <- draft[, pair2:=normalizePath(file.path(here(), pair2))]
+  draft
+}
+pilot_tf <- clean_targetsfile(pilot_tf)
+main_tf <- clean_targetsfile(main_tf)
+```
+Checking the targets files
+
+**pilot**
+
+Pilot experiment targets file.
+```{r pilot-targetsfile, echo = FALSE}
+pilot_tf
+```
+
+**main**
+
+Main experiment targets file.
+```{r main-targetsfile, echo = FALSE}
+main_tf
+```
+
+**Check and write**
+Checking that the operation succeeded and write a new `targetsfile` to disk for other analysis steps.
+```{r check-write-targets-files}
+check_exp_rows <- function (x, y) {
+  x_rows <- dim(x)[1]
+  y_rows <- dim(y)[1]
+  # files exist
+  assertthat::assert_that(all(file.exists(y$pair1)))
+  assertthat::assert_that(all(file.exists(y$pair2)))
+  invisible(assertthat::are_equal(y_rows, x_rows / 2))
+}
+check_exp_rows(main, main_tf)
+check_exp_rows(pilot, pilot_tf)
+full_tf <- rbind(pilot_tf, main_tf)
+data.table::fwrite(x = full_tf, file = file.path(here(), "targetsfile"), col.names = TRUE, sep = "\t")
+```
+
+**targetsfile**
+
+```{r display-results}
+targetsfile <- data.table::fread(file = file.path(here(), "targetsfile"))
+targetsfile
+```
+## Alignments
+
+Run the alignments with bwa [1], assigning read group identifiers from the targetsfile.
+```{r}
+submit_bwa <- function(index       = "",
+                       rg_id       = c(),
+                       rg_sample   = c(),
+                       pair1       = c(),
+                       pair2       = c(),
+                       output_dir  = here(),
+                       job.init    = "",
+                       job.opts    = "-q normal") {
+  # prepare output file names and directory
+  stem <- file.path(output_dir, rg_id)
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+  stopifnot(dir.exists(output_dir))
+  
+  # fill in the command, and write to disk
+  cmd <- "bwa mem -t 4 -R '@RG\\tID:{rg_id}\\tSM:{rg_sample}' {index} {pair1} {pair2} | samtools sort -@ 2 -l 9 -O BAM -o {stem}.bam -"
+  tmpf <- tempfile(pattern = "submit_bwa.", fileext = ".sh")
+  writeLines(text = c(glue(cmd)), con = tmpf)
+
+  # submit the jobs
+  submit <- "{job.init} {job.opts} {tmpf}"
+  system(glue(submit), intern = TRUE)
+}
+
+submit_bwa(index      = file.path(here(), "genome", "fasta", "Russell_V2a.fa.gz"),
+           rg_id      = targetsfile$rgid,
+           rg_sample  = targetsfile$sample,
+           pair1      = targetsfile$pair1,
+           pair2      = targetsfile$pair2,
+           output_dir = file.path(here(), "10.alignments", "bwa"),
+           job.init   = "asub",
+           job.opts   = "-q normal -n 5")
+```

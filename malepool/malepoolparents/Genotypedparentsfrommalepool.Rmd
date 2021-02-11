@@ -1,0 +1,170 @@
+---
+title: "Genotypedparentsfrommalepool"
+author: "Casey Flay"
+date: "27/01/2021"
+output:
+  html_document: default
+  word_document: default
+---
+
+use roys zipped reference as reference
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+library(RLinuxModules)
+library(data.table)
+library(glue)
+library(here)
+library(tidyverse)
+library(stringr)
+library(ggplot2)
+library(magrittr)
+library(GenomicRanges)
+library(RSQLite)
+devtools::load_all(here::here())
+raw_fastq_directory <- russell_raw_fastq_directory()
+raw_fastq_directory
+module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 vcftools")
+```
+
+```{r link parent files to my directory for bwa}
+raw_fastq_directory <- "/powerplant/workspace/cflasc/Kiwifruit/DNAseq_processing/Trimmed_fastq_files/ER10522/99.reads_for_alignment"
+conn <- dbConnect(RSQLite::SQLite(), "/powerplant/output/genomic/plant/Actinidia/chinensis/Resequencing/SQLite/cflasc_kiwifruit_sequence_data.db")
+dbListTables(conn) #"bam_data"        "dna_seq_data"    "read_group_data" "ref_data"    
+x1 <- dbGetQuery(conn, "select * from dna_seq_data where pedigree_item in ('CK06_01', 'CK20_01', 'CK51_06') and experiment_request = 'ER10522'") %>% 
+  as.data.table()
+dbDisconnect(conn)
+
+fafilesbarcode <- str_match(x1$read1, "XX_(.*?)_L0")
+x1[, "barcode" := (fafilesbarcode[, c(2)])]
+
+# symlinks from -> to
+read1_from <- file.path(x1$path, x1$read1)
+read2_from <- file.path(x1$path, x1$read2)
+
+read1_to <- file.path("/powerplant/workspace/hrtcdf/FSTs/malepool/malepoolparents", x1$read1)
+read2_to <- file.path("/powerplant/workspace/hrtcdf/FSTs/malepool/malepoolparents", x1$read2)
+
+files <- data.table(from = c(read1_from, read2_from), to = c(read1_to, read2_to))
+files[,created_symlink := suppressWarnings(file.symlink(from, to)), by=1:nrow(files)]
+files
+```
+
+```{r symlink reference}
+mainDir <- "/powerplant/workspace/hrtcdf/FSTs/malepool/malepoolparents"
+royDir <- "/powerplant/workspace/hrards/projects/hrtcdf/genome/fasta"
+outDir <- str_c(mainDir, sep = "", collapse = TRUE)
+
+if (dir.exists(mainDir)){
+  setwd(file.path(mainDir))
+} else {
+    dir.create(file.path(mainDir))
+    setwd(file.path(mainDir))
+}
+ruref <- dir(royDir, pattern = "*.fa.gz", full.names = TRUE, include.dirs = TRUE)
+if (file.exists(ruref)){
+    print("symlink_ready")
+} else {
+    file.symlink (ruref, outDir)
+}
+```
+
+#Run the alignments with bwa [1], assigning read group identifiers from the targetsfile.
+```{r}
+submit_bwa <- function(rg_id       = c(),
+                       rg_sample   = c(),
+                       threads     = c(),
+                       pair1       = c(),
+                       pair2       = c(),
+                       output_dir  = c(),
+                       job.init    = c("asub"),
+                       job.opts    = c(),
+                       stem        = c()) {
+  # prepare output file names and directory
+  rg_sample  = paste(x1$rg_id, x1$pedigree_item, x1$sampleid_github, sep = "_")
+  stem       = file.path(output_dir, paste(x1$sampleid_github, x1$pedigree_item, sep="or"))
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+    stopifnot(dir.exists(output_dir))
+  symgenome     <- "/powerplant/workspace/hrtcdf/FSTs/malepool/malepoolparents/Russell_V2a.fa.gz"
+  file.exists(symgenome)
+  # fill in the command, and write to disk
+submit_bwa
+  cmd <- glue::glue("bwa mem -t 8 -R '@RG\\tID:{rg_id}\\tSM:{rg_sample}' {symgenome} {pair1} {pair2} | samtools sort -l 9 -O bam -o {stem}.bam - && samtools index {stem}.bam")
+  cmd
+  tmpf <- tempfile(pattern = "submit_bwa.", fileext = ".sh")
+  writeLines(text = cmd, con = tmpf)
+  rg_sample  = 
+  rg_id      = 
+  # submit the jobs
+  submit <- "{job.init} {job.opts} {tmpf}"
+  system(glue(submit), intern = TRUE)
+}
+
+submit_bwa(rg_id      = paste(x1$pedigree_item, seq_along(rg_sample), sep = "_"),
+           rg_sample  = paste(x1$rg_id, x1$pedigree_item, x1$sampleid_github, sep = "_"),
+           pair1      = x1$read1,
+           pair2      = x1$read2,
+           output_dir = "/workspace/hrtcdf/FSTs/malepool/malepoolparents",
+           job.init   = "asub",
+           job.opts   = "-q normal -R rusage[tmp=2000]",   
+           stem       = file.path(output_dir, paste(x1$sampleid_github, x1$pedigree_item, sep="or")))
+#file.exists(symgenome)
+```
+
+```{r update data.table}
+x2 <- unique(x1, by= c("pedigree_item"))
+x2 <- x2[, c("sampleid_github", "pedigree_item")]
+x2 <- x2[, pile:="pile"]
+x2 <- x2[, or:="or"]
+x2 <- x2[, .bam:=".bam"]
+x2 <- x2[, .vcf:=".vcf"]
+x2
+```
+
+## index so -r chr25 can be called in mpileup. 
+```{r}
+bamfiles       <- dir( pattern = "*.bam$", full.names = FALSE, include.dirs = TRUE)
+output         <- paste(bamfiles, ".bai", sep="") 
+samtools_index <- glue("samtools index {bamfiles} {output} -c")
+logDir         <- file.path(logDir)
+out_file       <- file.path(logDir, "job_index.out"); err_file <- file.path(logDir, "job_index.err")
+bsub_cmd       <- glue("bsub -n 8 -o {out_file} -e {err_file} {samtools_index}")
+system(bsub_cmd)
+```
+
+```{r run-mileup for chr25 to make .vcf files}
+submit_mpileup <- function(reference = "genome", 
+                           output = c(), 
+                           bamfiles = c(), 
+                           job.init = "asub", 
+                           job.opts = "-q normal -n 8")
+{
+  cmd <- "bcftools mpileup -B -Q 10 -a {mpileuptags} -f {reference} {bamfiles} | bcftools call -f {bcfcalltags} -p {pvalThres} -m -A -Oz -o {output} && bcftools index -f {output}"
+  tmpf <- tempfile(pattern = "submit_mileup.", fileext = ".sh")
+  writeLines(text = c(glue(cmd)), con = tmpf)
+  submit <- "{job.init} {job.opts} {tmpf}"
+  system(glue(submit), intern = TRUE)
+}
+genome      <- genome_fasta()
+mpileuptags <- "FORMAT/DP,FORMAT/AD,INFO/AD"
+bcfcalltags <- "GQ,GP"
+pvalThres   <- 0.99
+mainDir2    <- c("/powerplant/workspace/hrtcdf/FSTs/malepool/malepoolparents/")
+bamfiles    <- paste0(mainDir2, x2$sampleid_github, x2$or, x2$pedigree_item, x2$.bam)
+output      <- paste0(mainDir2, x2$pile, x2$sampleid_github, x2$or, x2$pedigree_item, x2$.vcf)
+reference   <- dir("/powerplant/workspace/hrards/projects/hrtcdf/genome/fasta", pattern = ".*\\.gz$", full.names = TRUE)
+file
+file.exists(bamfiles)
+file.exists(reference)
+reference
+
+submit_mpileup(reference = reference, output = output, bamfiles = bamfiles)
+```
+
+```{r }
+
+vcfcmd      <- "bcftools view -r 'chr25' '/powerplant/workspace/hrtcdf/FSTs/malepool/malepoolparents/pileK97_03_05_07borCK06_01.bam' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
+
+DTRu2a_alts <- fread(cmd=vcfcmd, col.names = c('rSAMPLE','POS','rREF','rALT','rDP','rAD','rAD0','rAD1','rAD2','rAD3'), key = 'POS')
+
+```

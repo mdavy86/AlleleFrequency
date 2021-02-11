@@ -1,0 +1,17 @@
+---
+title: "maleQTLseqr"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(data.table)
+library(QTLseqr)
+library(dplyr)
+```
+
+```{r}
+testmfqtl <- fread('./QTLSeqr/CHR26.HighFruitWeight.extract.vcf',skip='#CHROM')
+testmfqtl
+```

@@ -82,7 +82,7 @@ colnames(lindts) <- c("HL55", "sample", "lane", "bam", "version" )
 
 ```{r run-mileup for chr25}
 submit_mpileup <- function(reference = "*.fa.gz", output = c(), bamfiles = c(), job.init = "asub", job.opts = "-q normal") {
-  cmd <- "bcftools mpileup -B -Q 0 -f {reference} -r chr25 -a {mpileupTags} {bamfiles} -Ou | bcftools call -f {bcfcallTags} -p {pvalThres} -m -A -Oz -o {output}"
+  cmd <- "bcftools mpileup -B -Q 0 -G {####} -f {reference} -r chr25 -a {mpileupTags} {bamfiles} -Ou | bcftools call -f {bcfcallTags} -p {pvalThres} -m -A -Oz -o {output}"
   tmpf <- tempfile(pattern = "submit_mileup.", fileext = ".sh")
   writeLines(text = c(glue(cmd)), con = tmpf)
   submit <- "{job.init} {job.opts} {tmpf}"
@@ -141,7 +141,6 @@ done
 ##Add RG info https://github.com/Actinidia/FlavourGenetics/blob/afe4f2334ca7a3a95b1738e16e4c63e988f9aef6/DryMatter/ExpRequestor10619/2019-07-29-ER10619-Align-QC.ipynb
 ## helpfull-- https://www.poftut.com/linux-cut-command-examples/
 ```{bash}
-OUTPUT="/powerplant/workspace/hrtcdf/FSTs/TestPool/15_filter"
 inDir="/powerplant/workspace/hrtcdf/FSTs/TestPool/"
 
 for SAMP in $inDir/$(ls CK*) ;do
@@ -150,14 +149,14 @@ lane=$(echo `basename $SAMP .bam.gz` | cut -c11-)
 SM=$(echo `basename $SAMP .bam.gz` | cut -c-12)
 RG=${SM}_$lane
 line=$(echo -e "-r 'ID:${RG}' -r 'LB:1' -r 'SM:${SM}'")
-#echo $name
-#echo $SM
-#echo $RG
-#echo $lane
-#echo $line
+echo $name
+echo $SM
+echo $RG
+echo $lane
+echo $line
 
-echo "samtools addreplacerg ${line} -o $OUTPUT/${name}.RG.bam $SAMP"
-done | bsub 
+#echo "samtools addreplacerg ${line} -o $OUTPUT/${name}.RG.bam $SAMP"
+done #| asub -j asgsdfhsd
 ```
 
 

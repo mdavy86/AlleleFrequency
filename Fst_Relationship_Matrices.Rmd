@@ -1,0 +1,277 @@
+---
+title: "Relationship matricies for test and Full trial pools"
+author: "Casey"
+date: "31/03/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Test pool A1. Russell father. 90% male. Missing the pedigree of 2 males.
+
+```{r}
+library(PFRBreedR)
+library(ActR)
+Set1 <- c(
+ 'CK02_04' #Female
+,'CK06_01' #Male
+,'CK13_02' #Male
+,'CK20_01' #Male
+,'CK51_06' #Female
+)
+
+EBTree(5,PI=Set1) 
+
+pedigrees <- EBPedigree(crpId=5, PI=Set1)
+coanFn(Set1, myPed=pedigrees)
+```
+#Test pool B2
+```{r}
+library(PFRBreedR)
+library(ActR)
+Set1 <- c('CK02_04',	
+          'CK06_01',	
+          'CK13_02',	
+          'CK20_01',	
+          'CK51_06')
+
+EBTree(5,PI=Set1) 
+
+pedigrees <- EBPedigree(crpId=5, PI=Set1)
+coanFn(Set1, myPed=pedigrees)
+```
+#Test pool C3
+```{r}
+library(PFRBreedR)
+library(ActR)
+Set1 <- c('CK02_04',	
+          'CK06_01',	
+          'CK13_02',	
+          'CK20_01',	
+          'CK51_06')
+
+EBTree(5,PI=Set1) 
+
+pedigrees <- EBPedigree(crpId=5, PI=Set1)
+coanFn(Set1, myPed=pedigrees)
+```
+#Test pool D6
+```{r}
+library(PFRBreedR)
+library(ActR)
+Set1 <- c('CK02_04',	
+          'CK06_01',
+          'CK09_06',
+          'CK13_02',	
+          'CK20_01',	
+          'CK51_06')
+
+EBTree(5,PI=Set1) 
+
+pedigrees <- EBPedigree(crpId=5, PI=Set1)
+coanFn(Set1, myPed=pedigrees)
+```
+#Test pool E11
+```{r}
+library(PFRBreedR)
+library(ActR)
+Set1 <- c('CK02_04',	
+          'CK06_01',	
+          'CK13_02',	
+          'CK20_01',	
+          'CK51_06')
+
+EBTree(5,PI=Set1) 
+
+pedigrees <- EBPedigree(crpId=5, PI=Set1)
+coanFn(Set1, myPed=pedigrees)
+```
+#Test pool F12
+```{r}
+library(PFRBreedR)
+library(ActR)
+Set1 <- c('CK02_04',	
+          'CK06_01',	
+          'CK13_02',	
+          'CK20_01',	
+          'CK51_06')
+
+EBTree(5,PI=Set1) 
+
+pedigrees <- EBPedigree(crpId=5, PI=Set1)
+coanFn(Set1, myPed=pedigrees)
+```
+#Test pool G13
+```{r}
+library(PFRBreedR)
+library(ActR)
+Set1 <- c('CK02_04',	
+          'CK06_01',	
+          'CK13_02',	
+          'CK20_01',	
+          'CK51_06')
+
+EBTree(5,PI=Set1) 
+
+pedigrees <- EBPedigree(crpId=5, PI=Set1)
+coanFn(Set1, myPed=pedigrees)
+```
+#Test pool H14
+```{r}
+library(PFRBreedR)
+library(ActR)
+Set1 <- c('CK02_04',	
+          'CK06_01',	
+          'CK13_02',	
+          'CK20_01',	
+          'CK51_06')
+
+EBTree(5,PI=Set1) 
+
+pedigrees <- EBPedigree(crpId=5, PI=Set1)
+coanFn(Set1, myPed=pedigrees)
+```
+#Test pool I15
+```{r}
+library(PFRBreedR)
+library(ActR)
+Set1 <- c('CK02_04',	
+          'CK06_01',	
+          'CK13_02',	
+          'CK20_01',	
+          'CK51_06')
+
+EBTree(5,PI=Set1) 
+
+pedigrees <- EBPedigree(crpId=5, PI=Set1)
+coanFn(Set1, myPed=pedigrees)
+```
+#Test pool J16
+```{r}
+library(PFRBreedR)
+library(ActR)
+Set1 <- c('CK02_04',	
+          'CK06_01',	
+          'CK13_02',	
+          'CK20_01',	
+          'CK51_06')
+
+EBTree(5,PI=Set1) 
+
+pedigrees <- EBPedigree(crpId=5, PI=Set1)
+coanFn(Set1, myPed=pedigrees)
+```
+#Full pool CK02_01
+```{r}
+library(PFRBreedR)
+library(ActR)
+Set1 <- c('CK15_03',	
+          'CK17_02',	
+          'CK20_01',	
+          'Bejing #36',	
+          'CK51_01')
+
+EBTree(5,PI=Set1) 
+
+pedigrees <- EBPedigree(crpId=5, PI=Set1)
+coanFn(Set1, myPed=pedigrees)
+```
+#Full pool CK10_02
+```{r}
+library(PFRBreedR)
+library(ActR)
+Set1 <- c('CK17_03',	
+          'CK18_01',	
+          'CK19_03',	
+          'CK51_09')
+
+EBTree(5,PI=Set1) 
+
+pedigrees <- EBPedigree(crpId=5, PI=Set1)
+coanFn(Set1, myPed=pedigrees)
+```
+#Full pool CK19_03
+```{r}
+library(PFRBreedR)
+library(ActR)
+Set1 <- c('CK10_02',	
+          'CK10_05',	
+          'CK13_02',	
+          'CK15_04',	
+          'Bejing #36',
+          'CK51_01')
+
+EBTree(5,PI=Set1) 
+
+pedigrees <- EBPedigree(crpId=5, PI=Set1)
+coanFn(Set1, myPed=pedigrees)
+```
+#Full pool CK20_01
+```{r}
+library(PFRBreedR)
+library(ActR)
+Set1 <- c('CK02_01',	
+          'CK09_11',	
+          'CK10_03')
+
+EBTree(5,PI=Set1) 
+
+pedigrees <- EBPedigree(crpId=5, PI=Set1)
+coanFn(Set1, myPed=pedigrees)
+```
+#Full pool CK22_03
+```{r}
+library(PFRBreedR)
+library(ActR)
+Set1 <- c('CK23_08',
+          'CK51_09')
+
+EBTree(5,PI=Set1) 
+
+pedigrees <- EBPedigree(crpId=5, PI=Set1)
+coanFn(Set1, myPed=pedigrees)
+```
+#Full pool CK23_08
+```{r}
+library(PFRBreedR)
+library(ActR)
+Set1 <- c('CK01_01_01_01',	
+          'CK15_03',	
+          'CK16_01',
+          'CK22_03')
+
+EBTree(5,PI=Set1) 
+
+pedigrees <- EBPedigree(crpId=5, PI=Set1)
+coanFn(Set1, myPed=pedigrees)
+```
+#Full pool CK51_01
+```{r}
+library(PFRBreedR)
+library(ActR)
+Set1 <- c('CK02_01',	
+          'CK17_03',	
+          'CK19_03')
+
+EBTree(5,PI=Set1) 
+
+pedigrees <- EBPedigree(crpId=5, PI=Set1)
+coanFn(Set1, myPed=pedigrees)
+```
+#Full pool CK51_09
+```{r}
+library(PFRBreedR)
+library(ActR)
+Set1 <- c('CK02_04',	
+          'CK06_01',	
+          'CK10_02',	
+          'CK15_04',	
+          'CK22_03')
+
+EBTree(5,PI=Set1) 
+
+pedigrees <- EBPedigree(crpId=5, PI=Set1)
+coanFn(Set1, myPed=pedigrees)
+```

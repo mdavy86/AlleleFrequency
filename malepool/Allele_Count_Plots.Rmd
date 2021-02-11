@@ -1,0 +1,117 @@
+---
+title: "Allele Count Plots"
+output:
+  word_document:
+    toc: no
+  html_document:
+    toc: no
+  github_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(knitr)
+library(RLinuxModules)
+library(data.table)
+library(glue)
+library(here)
+library(tidyverse)
+library(stringr)
+library(ggplot2)
+library(magrittr)
+library(GenomicRanges)
+module("load openlava asub bwa/0.7.12 samtools/1.9 bcftools/1.10.2 vcftools")
+```
+
+## Load in data knitR needs to be run in sequence after the code creating data.frame.
+
+Using `bcftools query` to load data from pre-computed vcf files
+```{r }
+bcfcmd <- "bcftools query 'cA1_chr25_filt.vcf.gz' -e 'INFO/DP<60 || INFO/DP>200 || INFO/INDEL=1 || INFO/AD[1]<4' -f'[%SAMPLE]\t%CHROM\t%POS\t%REF\t%ALT\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\t%AC\t%AN\ [%GT]\n' | awk ' BEGIN{ OFS=\"\t\" }{print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$7/$6,$12/$13,$14 }'"
+
+DTa <- fread(cmd=bcfcmd, col.names = c('SAMPLE','CHROM','POS','REF','ALT','DP','AD','REFal0','alta1','alta2','alta3','AC','AN','MaleFreq','AF','GT'))
+```
+
+```{r}
+get_allele_count_plot <- function(dt, allele_count) {
+  ggplot(dt[AC == allele_count], aes(x=POS, y=MaleFreq, color=DP)) +
+    geom_point(alpha = 0.3, position = position_jitter()) +
+    ggtitle(paste0("90%male AC=", allele_count, collapse = NULL)) +
+    theme(plot.title = element_text(hjust = 0.5))
+}
+
+get_allele_count_plot(DTa, allele_count = '0')
+get_allele_count_plot(DTa, allele_count = '0,0')
+get_allele_count_plot(DTa, allele_count = '0,0,0')
+get_allele_count_plot(DTa, allele_count = '1')
+get_allele_count_plot(DTa, allele_count = '1,0')
+get_allele_count_plot(DTa, allele_count = '2')
+
+```
+```{r}
+bcfcmd <- "bcftools query 'cF12_chr25_filt.vcf.gz' -e 'INFO/DP<60 || INFO/DP>200 || INFO/INDEL=1 || INFO/AD[1]<4' -f'[%SAMPLE]\t%CHROM\t%POS\t%REF\t%ALT\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\t%AC\t%AN\ [%GT]\n' | awk ' BEGIN{ OFS=\"\t\" }{print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$7/$6,$12/$13,$14 }'"
+
+DTf <- fread(cmd=bcfcmd, col.names = c('SAMPLE','CHROM','POS','REF','ALT','DP','AD','REFal0','alta1','alta2','alta3','AC','AN','MaleFreq','AF','GT'))
+
+```
+
+```{r}
+get_allele_count_plot <- function(dt, allele_count) {
+  ggplot(dt[AC == allele_count,], aes(x=POS, y=MaleFreq, color=DP)) +
+    geom_point(alpha = 0.3, position = position_jitter()) +
+    ggtitle(paste0("DTf 50%m AC=", allele_count, collapse = NULL)) +
+    theme(plot.title = element_text(hjust = 0.5))
+}
+
+get_allele_count_plot(DTf, allele_count = '0')
+get_allele_count_plot(DTf, allele_count = '0,0')
+get_allele_count_plot(DTf, allele_count = '0,0,0')
+get_allele_count_plot(DTf, allele_count = '1')
+get_allele_count_plot(DTf, allele_count = '1,0')
+get_allele_count_plot(DTf, allele_count = '2')
+```
+
+```{r}
+bcfcmd <- "bcftools query 'cJ16_chr25_filt.vcf.gz' -e 'INFO/DP<60 || INFO/DP>200 || INFO/INDEL=1 || INFO/AD[1]<4' -f'[%SAMPLE]\t%CHROM\t%POS\t%REF\t%ALT\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\t%AC\t%AN\ [%GT]\n' | awk ' BEGIN{ OFS=\"\t\" }{print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$7/$6,$12/$13,$14 }'"
+
+DTj <- fread(cmd=bcfcmd, col.names = c('SAMPLE','CHROM','POS','REF','ALT','DP','AD','REFal0','alta1','alta2','alta3','AC','AN','MaleFreq','AF','GT'))
+
+```
+
+```{r}
+get_allele_count_plot <- function(dt, allele_count) {
+  ggplot(dt[AC == allele_count,], aes(x=POS, y=MaleFreq, color=DP)) +
+    geom_point(alpha = 0.3, position = position_jitter()) +
+    ggtitle(paste0("DTj 10%m AC=", allele_count, collapse = NULL)) +
+    theme(plot.title = element_text(hjust = 0.5))
+}
+
+get_allele_count_plot(DTj, allele_count = '0')
+get_allele_count_plot(DTj, allele_count = '0,0')
+get_allele_count_plot(DTj, allele_count = '0,0,0')
+get_allele_count_plot(DTj, allele_count = '1')
+get_allele_count_plot(DTj, allele_count = '1,0')
+get_allele_count_plot(DTj, allele_count = '2')
+```
+
+```{r}
+get_allele_count_plot <- function(dt, allele_count) {
+  ggplot(dt[AC == allele_count,], aes(x=alta1, y=REFal0, color=POS)) +
+    geom_point(alpha = 0.3, position = position_jitter()) +
+    ggtitle(paste0("DTj 10%m AC=", allele_count, collapse = NULL)) +
+    theme(plot.title = element_text(hjust = 0.5))
+}
+
+get_allele_count_plot(DTj, allele_count = '0')
+get_allele_count_plot(DTj, allele_count = '0,0')
+get_allele_count_plot(DTj, allele_count = '0,0,0')
+get_allele_count_plot(DTj, allele_count = '1')
+get_allele_count_plot(DTj, allele_count = '1,0')
+get_allele_count_plot(DTj, allele_count = '2')
+get_allele_count_plot(DTa, allele_count = '0')
+get_allele_count_plot(DTa, allele_count = '0,0')
+get_allele_count_plot(DTa, allele_count = '0,0,0')
+get_allele_count_plot(DTa, allele_count = '1')
+get_allele_count_plot(DTa, allele_count = '1,0')
+get_allele_count_plot(DTa, allele_count = '2')
+```

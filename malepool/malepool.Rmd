@@ -2,11 +2,14 @@
 title: "testpoolmpile"
 author: "Casey Flay"
 date: "30/09/2020"
-output: html_document
+output:
+  html_document: default
+  word_document: default
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
 library(RLinuxModules)
 library(data.table)
 library(glue)
@@ -15,10 +18,16 @@ library(tidyverse)
 library(stringr)
 library(ggplot2)
 library(magrittr)
-module("load openlava asub bwa/0.7.12 samtools/1.9 bcftools/1.10.2 vcftools")
+library(GenomicRanges)
+library(tools)
+library(future)
+library(future.batchtools)
+plan(batchtools_openlava)
+setDTthreads(1)
+module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 vcftools")
 ```
 
-```{r}
+```{r symlink}
 mainDir <- "/powerplant/workspace/hrtcdf/FSTs/"
 subDir <- "malepool"
 royDir <- "/workspace/hrards/projects/hrtcdf/10.alignments/bwa"
@@ -34,38 +43,25 @@ if (dir.exists(mainDir)){
 
 malepoolfiles <- dir(royDir, pattern = "^HW5YYDSXX", full.names = TRUE, include.dirs = TRUE)
 
-file.symlink (tpoolfiles, outDir)
+#file.symlink (tpoolfiles, outDir)
 ## we don't need the full pathname into the symlink file.
 ```
 
 ```{r transform filenames to sample, lane and suffix for data.table from link}
-wd <- ("/powerplant/workspace/hrtcdf/FSTs/malepool/")
-pattern <- c(".bai", ".txt", ".Rmd")
-f <- grep(paste(pattern, collapse = "|"), list.files(path="."),  invert=TRUE, value=TRUE)
-str1 <- str_replace(f, "XX_" , "XX_&")
-str2 <- str_replace(str1, "_L" , "&_L")
-str3 <- str_replace(str2, ".bam" , "&.bam&")
+pattern <- c("HW5YYDSXX_A1_L003.bam", "HW5YYDSXX_B2_L003.bam", "HW5YYDSXX_C3_L003.bam",
+"HW5YYDSXX_E11_L003.bam", "HW5YYDSXX_F12_L003.bam", "HW5YYDSXX_G13_L004.bam", "HW5YYDSXX_H14_L004.bam","HW5YYDSXX_I15_L004.bam","HW5YYDSXX_J16_L004.bam")
 
-malepooldt <- {data.table(str3) %>%
-  separate(str3, into = c("HL55", "sample", "lane", "bam", "version"), sep = "&", fill = "left") %>%
+pattern <- str_replace(pattern, "XX_" , "XX_&")
+pattern <- str_replace(pattern, "_L" , "&_L")
+pattern <- str_replace(pattern, ".bam" , "&.bam")
+pattern
+malepooldt <- {data.table(pattern) %>%
+  separate(pattern, into = c("HL55", "sample", "lane", "bam", "version"), sep = "&", fill = "right") %>%
   mutate("version" = str_extract(sample, regex("/")))
 }
 malepooldt
 
 colnames(malepooldt) <- c("HL55", "sample", "lane", "bam", "version" )
-#write.table(malepooldt, 'linkpool.tsv')
-```
-
-```{bash index.bai}
-t=8
-#inDir="/powerplant/workspace/hrtcdf/FSTs/TestPool/bamlinkindexed"
-logDir="/powerplant/workspace/hrtcdf/FSTs/TestPool/bamlinkindexed/logDir"
-if  [ ! -d  "logDir" ]; then mkdir "logDir" ; fi
-
-for vcf in $(ls *.bam); do
-bsub -n $t -o $logDir/$vcf.err -e $logDir/$vcf.err "samtools index $vcf > $vcf.bai"
-#echo $vcf
-done
 ```
 
 ## use samtools for indexing normal?, tabix and stats.
@@ -74,120 +70,251 @@ t=8
 logDir="/powerplant/workspace/hrtcdf/FSTs/malepool/logDir"
 if  [ ! -d  "logDir" ]; then mkdir "logDir" ; fi
 
-for vcf in $(ls *chr25.vcf.gz); do
+for vcf in $(ls *filt.vcf.gz); do
 #bsub -n $t -o $logDir/$vcf.log -e $logDir/$vcf.err "bcftools stats $vcf > ${vcf}.stats "
+#bsub -n $t -o $logDir/$vcf.err -e $logDir/$vcf.err "samtools index $vcf > $vcf.bai"
+bsub -n $t -o $logDir/$vcf.log -e $logDir/$vcf.err "bcftools index -t $vcf"
 bsub -n $t -o $logDir/$vcf.log -e $logDir/$vcf.err "bcftools index -t $vcf"
 #bsub -n $t -o $logDir/$vcf.log -e $logDir/$vcf.err "samtools index $vcf"
-#echo c${vcf}
+#echo ${vcf}
 done
 ```
 
-```{r run-mileup for chr25}
+```{r run bcftools mpileup for chr25}
 submit_mpileup <- function(reference = "*.fa.gz", output = c(), bamfiles = c(), job.init = "asub", job.opts = "-q normal") {
-  cmd <- "bcftools mpileup -B -Q 0 -f {reference} -r chr25 -a {mpileuptags} {bamfiles} -Ou | bcftools call -f {bcfcalltags} -p {pvalThres} -m -A -Oz -o {output}"
+  cmd <- "bcftools mpileup -B -I -Q 0 -f {reference} --excl-flags 'UNMAP,SECONDARY,QCFAIL,DUP' -r 'chr25' -a {mpileuptags} {bamfiles} -Ou | bcftools call -f {bcfcalltags} -p {pvalThres} -m -A -Oz -o {output} && bcftools index {output}"
   tmpf <- tempfile(pattern = "submit_mileup.", fileext = ".sh")
   writeLines(text = c(glue(cmd)), con = tmpf)
   submit <- "{job.init} {job.opts} {tmpf}"
   system(glue(submit), intern = TRUE)
 }
-mpileuptags <- "DP,AD,ADF,ADR,SP,INFO/AD,INFO/ADF,INFO/ADR"
+mpileuptags <- "DP,AD,SP,INFO/AD"
 bcfcalltags <- "GQ,GP"
   pvalThres <- 0.99
 
 bamfiles    <- paste(malepooldt$HL55, malepooldt$sample, malepooldt$lane, malepooldt$bam, sep = "")
-bamfiles
-out         <- paste(malepooldt$sample, "chr25.vcf.gz", sep = "_")
+#bamfiles
+out         <- paste(malepooldt$sample, "chr25_pile.vcf.gz", sep = "_")
+#out
+
 reference   <- dir("/workspace/hrards/projects/hrtcdf/genome/fasta", pattern = ".*\\.gz$", full.names = TRUE)
 #file.exists(bamfiles)
 #file.exists(reference)
 submit_mpileup(reference = reference, output = out, bamfiles = bamfiles)
 ```
 
-#https://github.com/caseyflay/HighHealth/blob/master/QTLSeqr/CheckAlleleFreqs.Rmd
-##Calculate AF over all pools on CHR1
+```{r update malepooldt}
+malepooldt1 <- malepooldt[, bam := NULL]
+malepooldt1 <- malepooldt1[, vcf:= ".vcf.gz"]
+malepooldt1 <- malepooldt1[, chr:= "_chr25_"]
+malepooldt1 <- malepooldt1[, work:= "pile"]
+malepooldt1 <- malepooldt1[, filterquery:= "f"]
+```
+
+```{r filter also taking out homozygous sites}
+#vcfin       <- list.files(path = ".", pattern = "*chr25_pile.vcf.gz$")
+vcfin       <- paste(malepooldt1$sample, malepooldt1$chr, malepooldt1$work, malepooldt1$vcf, sep = "")
+for (i in vcfin){
+vcfcmd      <- glue::glue("bcftools query {i} -e 'INFO/DP<30 || INFO/DP>120 || INFO/AD[0]=INFO/AD[1] || INFO/AD[1]<10' -f '[[%SAMPLE]]\t%CHROM\t%POS\t%REF\t%ALT\t%DP\t%AD\t%AD{{0}}\t%AD{{1}}\t%AD{{2}}\t%AD{{3}}\t%AC\t%AN [[\t%GT]]\n' -o 'f{i}' ")
+vcfcmd
+logDir         <- "/powerplant/workspace/hrtcdf/FSTs/malepool/logDir"
+bsub_out_file  <- file.path(logDir, "job.out"); bsub_err_file <- file.path(logDir, "job.err")
+bsub_cmd       <- glue("bsub -n 8 -o {bsub_out_file} -e {bsub_err_file} {vcfcmd}")
+system(bsub_cmd)
+}
+```
+
+```{r filter without removing homs creating files for the first 10000000 sites and then past 10000001-}
+vcfin       <- paste(malepooldt1$sample, malepooldt1$chr, malepooldt1$work, malepooldt1$vcf, sep = "")
+#to10mb
+for (i in vcfin){
+vcfcmd      <- glue::glue("bcftools query {i} -r 'chr25:1-10000000' -e 'INFO/DP<30 || INFO/DP>120' -f '[[%SAMPLE]]\t%POS\t%REF\t%ALT\t%ALT{{0}}\t%ALT{{1}}\t%ALT{{2}}\t%DP\t%AD\t%AD{{0}}\t%AD{{1}}\t%AD{{2}} \n' -o 'to10mbwithhom{i}' ")
+logDir         <- "/powerplant/workspace/hrtcdf/FSTs/malepool/logDir"
+bsub_out_file  <- file.path(logDir, "job.out"); bsub_err_file <- file.path(logDir, "job.err")
+bsub_cmd       <- glue("bsub -n 8 -o {bsub_out_file} -e {bsub_err_file} {vcfcmd}")
+system(bsub_cmd)
+}
+
+#from10mb
+for (i in vcfin){
+vcfcmd2      <- glue::glue("bcftools query {i} -r 'chr25:10000001-' -e 'INFO/DP<30 || INFO/DP>120' -f '[[%SAMPLE]]\t%POS\t%REF\t%ALT\t%ALT{{0}}\t%ALT{{1}}\t%ALT{{2}}\t%DP\t%AD\t%AD{{0}}\t%AD{{1}}\t%AD{{2}} \n' -o 'from10Mbwithhom{i}'")
+logDir         <- "/powerplant/workspace/hrtcdf/FSTs/malepool/logDir"
+bsub_out_file  <- file.path(logDir, "job.out"); bsub_err_file <- file.path(logDir, "job.err")
+bsub_cmd       <- glue("bsub -n 8 -o {bsub_out_file} -e {bsub_err_file} {vcfcmd2}")
+system(bsub_cmd)
+}
+```
+
+
+```{r run future.batchtools to reduce the time required to run the large files}
+files      <-  paste("withhom", malepooldt$sample, "_chr25_pile.vcf.gz", sep = "")
+files
+
+dat <- future({lapply(files, fread, col.names = c('mpSAMPLE','POS','mpREF','mpALT','mpALT0','mpALT1','mpALT2','mpDP','mpAD0','mpAD1','mpAD2'), key = 'POS')
+  #names(dat) <- malepooldt$sample
+})
+dat
+```
+
+
+
+```{r read first half of the .vcf.gz into data.table. reads into single datatable with each data.table as an element in "dat"}
+files      <- paste("to10mbwithhom", malepooldt$sample, "_chr25_pile.vcf.gz", sep="")
+dat        <- lapply(files, fread, col.names = c('mpSAMPLE','POS','mpREF','mpALT','mpALT0','mpALT1','mpALT2','mpDP','mpAD','mpAD0','mpAD1','mpAD2'), key = 'POS')
+names(dat) <- malepooldt$sample
+```
+
+```{r get Russellv2a alts to remove russell snps from male pools}
+bcfcmd  <- "bcftools query /powerplant/workspace/hrtcdf/FSTs/Russellalt/Russellpile_chr25.vcf.gz -r 'chr25:1-10000000' -f '[%SAMPLE]\t%POS\t%REF\t%ALT\t%ALT{0}\t%ALT{1}\t%ALT{2}\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\n' 2>/dev/null"
+DTruref_withalt <- fread(cmd=bcfcmd, col.names = c('rSAMPLE','POS','rREF','rALT','rALT0','rALT1','rALT2','rDP','rAD','rAD0','rAD1','rAD2'), key = 'POS', verbose = FALSE) 
+#qplot(POS, DP, data = DTrualt, color = alta1)
+```
+
+```{r merge data tables from pool and Rualts}
+datmerged <- lapply(dat, function(x) merge.data.table(x, DTruref_withalt, all=TRUE, by='POS'))
+```
+
+```{r clean up unneeded files in RAM}
+rm(dat, DTruref_withalt)
+```
+
+```{r shows there is no relationship between number of NA's and pool}
+numberofna <- lapply(datmerged, function(x) x[is.na(mpSAMPLE), .N])
+```
+
+```{r find the snps unique to Russell}
+datruuni <- lapply(datmerged, function(x) x[!is.na(rREF) & !is.na(mpREF) 
+        ][mpAD1 < 4, mpALT1 := "."
+        ][mpAD2 < 4, mpALT2 := "."
+        ][rAD1  < 4, rALT1  := "."
+        ][rAD2  < 4, rALT2  := "."  
+        ][mpAD1 < 4, mpAD1  := 0
+        ][mpAD2 < 4, mpAD2  := 0 
+        ][rAD1  < 4, rAD1   := 0
+        ][rAD2  < 4, rAD2   := 0
+        ][, c("rSAMPLE","rAD") := NULL                                     
+        ][rALT!=mpALT  
+        ][rALT0!=mpALT0 | rALT0!=mpALT1 | rALT0!=mpALT2 & rALT1!=mpALT0 | rALT1!=mpALT1 | rALT1!=mpALT2 & rALT2!=mpALT0 | rALT2!=mpALT1 | rALT2!=mpALT2
+#        ][mpALT=="."
+        ][, c("rAD0/rDP", "rAD1/rDP", "rAD1/mpAD1", "rAD0/(rAD0+rAD1+mpAD0"):=list(rAD0/rDP, rAD1/rDP, rAD1/mpAD1, rAD0/(rAD0+rAD1+mpAD0))
+ ])
+
+listpercentmale <- c("90% male", "75% male", "60% male", "80% male", "50% male", "45% male", "32% male", "21% male", "10% male")
+datruunique <- lapply(datruuni, function (x, y) { x[y, on = "mpSAMPLE"] }, data.table("mpSAMPLE" = names(datruuni), pcmale = listpercentmale))
+datruunique <- lapply(datruunique, function(x) x[!is.na(POS)])
+```
+
+```{r clean up unneeded files in RAM}
+rm(datmerged, datruuni)
+```
+
 ```{r}
-bcfcmd <- "bcftools query  -f '%CHROM\t%POS[\t%DP\t%AD]\n' D6_chr25.vcf.gz |awk '{print $1,$2,($4 + $6+ $8 + $10)/($3 + $5  + $7 + $9)}'"
-DT <- fread(cmd=bcfcmd,col.names = c('CHR','POS','AF'))
+lapply(datruunique, function(x) qplot(POS, rAD1, data = x, main=(paste0(x[1, pcmale]))))
 ```
 
-```{r message=FALSE, warning=FALSE}
-DT[,qplot(AF)]
+**The below is altered to give just the russell alt locations so they can be matched with pool alts of different bases if there are any.**
+```{r remove snps that do not vary at the alt position between russell and malepools}
+listpercentmale <- c("90% male", "75% male", "60% male", "80% male", "50% male", "45% male", "32% male", "21% male", "10% male")
+datonlyrualt <- lapply(datmerged, function(x) x[!is.na(SAMPLE.y) & !is.na(SAMPLE.y) & ALT.x != ALT.y
+        ][, c("SAMPLE.y", "CHROM.y", "REF.y") := NULL
+        ][, c("refovertotal", "altovertotal", "AD1.xoverAD1.y","Altoverrefdep"):=list(AD0.x/DP.x, AD1.x/DP.x, AD1.x/AD1.y, AD0.x/(AD0.x+AD1.x+AD0.y))
+        ][AD1.x == AD1.y
+        ])
+
+datonlyrualt <- lapply(datonlyrualt, function (x, y) { x[y, on = "SAMPLE.x"] },
+            data.table("SAMPLE.x" = names(datonlyrualt), pcmale = listpercentmale))
+datonlyrualt <- lapply(datonlyrualt, function(x) x[!is.na(POS)])
+datonlyrualt
 ```
 
-```{bash}
-#grep "AF" CK02_01_chr25.bcf.gz
-#grep --help
-#awk CK02_01_chr25.bcf.gz $1 | $2 'chr25:1737600'
-##get header from .gz references: zcat Russell_V2a.fa.gz | grep '>' | less
-#view .gz vcf files zcat CK02_01_chr25.bcf.gz | head -n 30
-
-#zcat CK02_01_chr25.bcf.gz | grep -v "386373" | cut -f1,2,3,4,5,6,7,8,9,10 | head -n 30
-
-#zcat CK02_01_chr25.bcf.gz | awk -v "AD" | cut -f1,2,3,4,5,6,7,8,9,10 | head -n 30
-```
-Andrew Catanach: 
-tail -n+2 /powerplant/workspace/cflasc/Kiwifruit/chinensis/20200827_Fisher_tests_for_Y_associated_SNPs/04.significant_p_values/Russell_V2a.chromosomes.and.unassigned_chr25_genotypes_fisher.out \
-| sed 's/,/\t/g' | awk '$2>8 {print}' | awk -v OFS="\t" '{print "chr25", $1-1, $1}' 
-
-#See awk '$2>8...., the smaller the number the larger the number of sites returned (and the looser the association) 
-#You could copy the file /powerplant/workspace/cflasc/Kiwifruit/chinensis/20200827_Fisher_tests_for_Y_associated_SNPs/04.significant_p_values/Russell_V2a.chromosomes.and.unassigned_chr25_genotypes_fisher.out 
-#That will give you all associated sites, then filter for those with the highest -log10_P values
-```{bash}
-tail -n+2 /powerplant/workspace/cflasc/Kiwifruit/chinensis/20200827_Fisher_tests_for_Y_associated_SNPs/04.significant_p_values/Russell_V2a.chromosomes.and.unassigned_chr25_genotypes_fisher.out \
-| sed 's/,/\t/g' | awk '$2>9.3{print}' | awk -v OFS="\t" '{print "chr25", $1-1, $1}' 
+```{r}
+lapply(datonlyrualt, function(x) qplot(AD1.x, Altoverrefdep, data = x, color = GT, main=(paste0(x[1, pcmale]))))
 ```
 
-```{bash}
-t=8
-logDir="/powerplant/workspace/hrtcdf/FSTs/malepool/logDir"
+```{r get Russellv2a homs to access pools alts and recover usefull allele frequency} 
+bcfcmd   <- "bcftools query '/powerplant/workspace/hrtcdf/FSTs/Russellalt/Russellpile.vcf.gz' -r 'chr25' -f '%POS\t%REF\t%ALT\t%DP\n'"
 
+DTruhom <- fread(cmd=bcfcmd, col.names = c('POS','REF','ALT','DP','AD','AD0','AD1','AD2','AC'), key = 'POS')
+#take out the russell heterozygotes
+DTruhom <- DTruhom[ALT=="."]
 
-bsub -n $t -o $logDir/$vcf.log -e $logDir/$vcf.err "zgrep '#CHROM' D6_chr25.vcf.gz > '1chr25_tail.txt' && 
-zcat D6_chr25.vcf.gz | tail -n 20 >> '1chr25_tail.txt' "
-
+#qplot(POS, DP, data = DTrualt, color = alta1)
 ```
 
-```{bash}
+```{r merge data tables from pool and Rualts}
+#take out the ruhets first.
+datmerged2 <- lapply(dat, function(x) merge.data.table(x, DTruhom, all=TRUE, by='POS'))
+```
+
+
+```{r remove snps at the same position as russell alts from the data.table list}
+listpercentmale <- c("90% male", "75% male", "60% male", "80% male", "50% male", "45% male", "32% male", "21% male", "10% male")
+dathomru <- lapply(datmerged2, function(x) x[!is.na(REF.x) & !is.na(REF.y)
+        ][, c("AD0freq","AD1freq"):=list(AD0/(AD0+AD1), AD1/(AD0+AD1))
+        ])
+dathomru <- lapply(dathomru, function (x, y) { x[y, on = "SAMPLE"] },
+            data.table("SAMPLE" = names(dathomru), pcmale = listpercentmale))
+dathomru <- lapply(dathomru, function(x) x[!is.na(POS)])
+```
+
+```{r}
+lapply(dathomru, function(x) qplot(POS, AD1freq, data = x, color = DP.x, main=(paste0(x[1, pcmale]))))
+```
+##check allele_Count_Plots.Rmd for the plots and ploting code.
+#DTjpoolSNPtest <- DTjpoolSNP[, `:=`(alt_overlap = any(str_split(ALT.x, pattern = ",")[[1]] %in% str_split(ALT.y, pattern = ",")[[1]]))]
+
+#DTjpoolSNP[alt_overlap == TRUE,]
+
+```{r remove snps at the same position as russell alts this works for indvidual datatables but the list of data.tables works}
+#listdfs <- list(A1andDTrualt, B2andDTrualt, C3andDTrualt,E11andDTrualt, F12andDTrualt, G13andDTrualt, H14andDTrualt, I15andDTrualt, J16andDTrualt)
+
+#for (i in seq_along(listdfs)){
+#smp <- listdfs[[i]][is.na(SAMPLE.y)] 
+#smp <- smp[, c("SAMPLE.y", "CHROM.y", "REF.y", "ALT.y", "DP.y", "AD.y", "AD0.y", "AD1.y", "AD2.y", "AC.y") := NULL]
+#smp <- smp[, "AD0/DP":=AD0.x/DP.x]
+#smp <- smp[, "AD1/DP":=AD1.x/DP.x]
+#fwrite(smp, sep = "\t", file= (paste0((smp[1, SAMPLE.x]), "poolnoRualts.tsv", sep="")))
+#head(smpl)
+#}
+```
+## to check home directory file sizes:
+#du -ahd1 | sort -hr
+#du -laSh | sort -hr | head
+
 #echo 386374 386412 386444 10841 10851 5186 >> SNP_list.txt 
 #zcat input_file.vcf.gz | vcftools --vcf - --site-pi --positions SNP_list.txt --out nucleotide_diversity
 #zcat A1_chr25.bcf.gz | vcftools --vcf - --site-pi --positions SNP_list.txt --out malepool
 #vcftools --gzvcf A1_chr25.vcf.gz --freq --positions SNP_list.txt --out $vcf
 #done
-```
-
-
-#Try make it a bit more bioinformatic
-##zcat CKRussell_piled.vcf.gz | head -n 100
-##CHROM  POS     ID      REF     ALT     QUAL    FILTER  INFO    FORMAT  D6
-##chr1    1       .       C       .       63      .       DP=1;ADF=1;ADR=0;AD=1;MQ0F=0;AN=2;DP4=1,0,0,0;MQ=33     GT:DP:SP:ADF:ADR:AD     0/0:1:0:1:0:1
-##[] Format fields must be enclosed in brackets to loop over all samples
-#bcfcmd <- "bcftools query  -f '%CHROM\t%POS[\t%DP\t%AD]\n' ../PoolSeq/mpileup/CHR1.cns.vcf.gz| awk '{print $1,$2,($4 + $6+ 
-
-working on this second one, need to pipe to .txt and get correct male%
-```{r}
-#piledvcf <- paste(lindts$sample, "piled.vcf.gz", sep = "_") -i 'INFO/MAF>0.0001'
-bcfcmd <- "bcftools query A1_chr25.vcf.gz -r 'chr25:1-1000000'  -f '[%SAMPLE]\t%CHROM\t%POS\t%REF\t%ALT\t%DP\t%AD\n' | awk '{print $1, $2, $3, $4, $5, $6, $7, ($7+$9+$11+$13), ($8+$10+$12+$14), ($6+$8+$10+$12)/($7+$9+$11+$13), ($7+$9+$11+$13)/$6}'"
-DTc <- fread(cmd=bcfcmd, col.names = c('SAMPLE','CHROM','POS','REF','ALT','DP','AD','REFal','ALTal','AF','MaleFreq'))
-#DTc %>% write_tsv("test.txt", col_names = TRUE)
-#DTc %>% write.table("malefreqDT.txt", append = FALSE, sep = " ", dec = ".", row.names = TRUE, col.names = TRUE)
-qplot(POS, MaleFreq, data = DTc, color = DP)
-```
-
-
-```{r}
-#DTc[,qplot(POS, MaleFreq)]
-#MDT <- 'malefreqDT.txt'
-qplot(POS, MaleFreq, data = DTc, color = DP)
-#ggplot(data = MDT['POS', 'MaleFreq'], mapping = aes(x= 'POS', y= 'MaleFreq'))
-
-```
-###todo need to write to data.frame to capture the data.
-Error in `[.data.table`(DTc, POS, MaleFreq) : POS is not found in calling scope but it is a column of type integer. If you wish to select rows where that column contains TRUE, or perhaps that column contains row numbers of itself to select, try DT[(col)], DT[DT$col], or DT[col==TRUE] is particularly clear and is optimized. When the first argument inside DT[...] is a single symbol (e.g. DT[var]), data.table looks for var in calling scope.
-
-##zcat CKRussell_piled.vcf.gz | head -n 100
-
-
+#grep "AF" CK02_01_chr25.bcf.gz
+#grep --help
+#awk CK02_01_chr25.bcf.gz $1 | $2 'chr25:1737600'
+##get header from .gz references: zcat Russell_V2a.fa.gz | grep '>' | less
+#view .gz vcf files zcat CK02_01_chr25.bcf.gz | head -n 30
+#zcat CK02_01_chr25.bcf.gz | grep -v "386373" | cut -f1,2,3,4,5,6,7,8,9,10 | head -n 30
+#zcat CK02_01_chr25.bcf.gz | awk -v "AD" | cut -f1,2,3,4,5,6,7,8,9,10 | head -n 30
+#to view bamfiles samtools tview -p 'chr25:11260' HW5YYDSXX_A1_L003.bam --reference [pathtofile]/Russell_V2a.fa.gz
 #git add 'filename'
-#git commit 
+#git commit "message"
 #git push origin master
+##killall -9 rsession
+#https://github.com/caseyflay/HighHealth/blob/master/QTLSeqr/CheckAlleleFreqs.Rmd
+##Calculate AF over all pools on CHR1
 
+#See awk '$2>8...., the smaller the number the larger the number of sites returned (and the looser the association) 
+#You could copy the file /powerplant/workspace/cflasc/Kiwifruit/chinensis/20200827_Fisher_tests_for_Y_associated_SNPs/04.significant_p_values/Russell_V2a.chromosomes.and.unassigned_chr25_genotypes_fisher.out 
+#That will give you all associated sites, then filter for those with the highest -log10_P values
+
+```{bash not included}
+#tail -n+2 /powerplant/workspace/cflasc/Kiwifruit/chinensis/20200827_Fisher_tests_for_Y_associated_SNPs/04.significant_p_values/Russell_V2a.chromosomes.and.unassigned_chr25_genotypes_fisher.out \
+#| sed 's/,/\t/g' | awk '$2>9.3{print}' | awk -v OFS="\t" '{print "chr25", $1-1, $1}' 
+```
+
+```{r run future.batchtools to reduce the time required to run the large files}
+v <- future({
+  "bcftools view 'withhomA1_chr25_pile.vcf.gz' | head"
+})
+val <- value(v)
+val
+#getwd()
+```

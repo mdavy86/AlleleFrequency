@@ -1,0 +1,254 @@
+---
+title: "Russell Chr10:4000000-13000000 aligned on PS1.69.0"
+output: html_document
+---
+
+**this code will use RussellV2a fasta's 3-5kb against PS1.69 to see where they align in relation to the Russell genome.**
+
+use roys zipped reference as reference
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+library(RLinuxModules)
+library(data.table)
+library(glue)
+library(here)
+library(tidyverse)
+library(stringr)
+library(ggplot2)
+library(magrittr)
+library(GenomicRanges)
+devtools::load_all(here::here())
+raw_fastq_directory <- russell_raw_fastq_directory()
+raw_fastq_directory
+module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 vcftools")
+```
+
+```{r, echo = FALSE}
+raw_fastq_directory <- "/powerplant/output/genomic/plant/Actinidia/chinensis/CK51F3_01/Genome/Assembly/PS1/1.69.0/Chromosomes/WithoutNullChromosome/Fasta/Red5_PS1.1.69.0.fsa"
+
+read_pair_from_fastq <- function(file, idx = 7) {
+  moniker <- basename(file)
+  moniker <- tools::file_path_sans_ext(moniker)
+  moniker <- tools::file_path_sans_ext(moniker)
+  parts   <- strsplit(moniker, "_")[[1]]
+  as.integer(gsub(pattern = "R", replacement = "", x = parts[idx]))
+}
+lane_from_fastq <- function(file, idx = 6) {
+  moniker <- basename(file)
+  moniker <- tools::file_path_sans_ext(moniker)
+  moniker <- tools::file_path_sans_ext(moniker)
+  parts   <- strsplit(moniker, "_")[[1]]
+  as.integer(gsub(pattern = "L", replacement = "", x = parts[idx]))
+}
+barcode_from_fastq <- function(file, idx = 5, delim = "_") {
+  moniker <- basename(file)
+  moniker <- tools::file_path_sans_ext(moniker)
+  moniker <- tools::file_path_sans_ext(moniker)
+  parts   <- strsplit(moniker, delim)[[1]]
+  parts[idx]
+}
+sample_name_from_fastq <- function(file, idx = 1, delim = "_") {
+  moniker <- basename(file)
+  moniker <- tools::file_path_sans_ext(moniker)
+  moniker <- tools::file_path_sans_ext(moniker)
+  parts   <- strsplit(moniker, delim)[[1]]
+  parts[idx]
+}
+library_size_from_fastq <- function(file, idx = 2, delim = "_") {
+  moniker <- basename(file)
+  moniker <- tools::file_path_sans_ext(moniker)
+  moniker <- tools::file_path_sans_ext(moniker)
+  parts   <- strsplit(moniker, delim)[[1]]
+  return(paste0(c(parts[idx]), collapse = ""))
+}
+
+partition_fastq_files_table <- function(directory, sample_idx = 1, barcode_idx = 5, lane_idx = 6, read_idx = 7) {
+  dt <- data.table(path = dir(directory, full.names = TRUE, pattern = "\\.fastq\\.gz$"))  
+  dt[, `:=`(fastq_basename = basename(.SD[,path]),
+            read_pair      = read_pair_from_fastq(.SD[,path], read_idx),
+            lane           = lane_from_fastq(.SD[,path], lane_idx),
+            barcode        = barcode_from_fastq(.SD[,path], barcode_idx),
+            sample_name    = sample_name_from_fastq(.SD[,path], sample_idx),
+            size           = library_size_from_fastq(.SD[,path], idx = c(2,3))
+            ),
+         .SDcols = c('path'),
+         by = 1:nrow(dt)]
+  dt <- dt[dt[,.(fastq_basename, lane, barcode, read_pair)],
+           on=.(lane, barcode, read_pair < read_pair)][!is.na(fastq_basename)]
+  dt[, path := NULL]
+  dt[, read_pair := NULL]
+  colnames(dt) <- c("read_1", "lane", "barcode", "sample_name", "library_size", "read_2")
+  dt[, read_1:=file.path(directory, read_1)]
+  dt[, read_2:=file.path(directory, read_2)]
+  return(dt[,.(sample_name, read_1, read_2, library_size, lane, barcode)])
+}
+
+```
+
+## Get list of raw fastq files
+
+```{r, echo = FALSE}
+x1 <- partition_fastq_files_table(raw_fastq_directory)
+knitr::kable(x1)
+```
+
+## Subset
+Only align a small number of these.
+```{r}
+x2 <- x1[library_size == '3-5kb']
+knitr::kable(x2)
+```
+
+## Data Volume?
+
+```{r}
+filestats <- data.table(filename = c(x1$read_1, x1$read_2))
+filestats[, size := gdata::humanReadable(file.size(filename))]
+filestats[, is_read1 := grepl(x = filename, pattern = "_R1\\.")]
+filestats[, fastq := basename(filename)]
+knitr::kable(filestats[, .(fastq, size, is_read1)])
+```
+
+## Get the read pairs for `bwa` we want the files in read pairs...
+## Alignments ammended 23/11
+Run the alignments with bwa [1], assigning read group identifiers from the targetsfile.
+```{r}
+submit_bwa <- function(rg_id       = c(),
+                       rg_sample   = c(),
+                       threads     = c(),
+                       pair1       = c(),
+                       pair2       = c(),
+                       output_dir  = c(),
+                       job.init    = c("asub"),
+                       job.opts    = c(),
+                       stem        = c()) {
+  # prepare output file names and directory
+  stem <- file.path(output_dir, rg_id)
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+    stopifnot(dir.exists(output_dir))
+  genome     <- "/workspace/ComparativeDataSources/Actinidia/chinensis/Red5_PS1_1.69.0/GCA_003024255.1_Red5_PS1_1.69.0/GCA_003024255.1_Red5_PS1_1.69.0_genomic.fna"
+  # fill in the command, and write to disk
+
+  cmd <- glue::glue("bwa mem -t {threads} -R '@RG\\tID:{rg_id}\\tSM:{rg_sample}' {genome} {pair1} {pair2} | samtools sort -l 9 -Oz bam -o {stem}.bam - && samtools index {stem}.bam")
+  tmpf <- tempfile(pattern = "submit_bwa.", fileext = ".sh")
+  writeLines(text = cmd, con = tmpf)
+  rg_sample  = paste("Russell", x2$lane, x2$barcode, sep = "_")
+  
+  # submit the jobs
+  submit <- "{job.init} {job.opts} {tmpf}"
+  system(glue(submit), intern = TRUE)
+}
+
+submit_bwa(rg_id      = paste("Russell", seq_along(rg_sample), sep = "_"),
+           rg_sample  = paste("Russell", x2$lane, x2$barcode, sep = "_"),
+           threads    = 8,
+           pair1      = x2$read_1,
+           pair2      = x2$read_2,
+           output_dir = "/workspace/hrtcdf/FSTs/Russellalt/RumappedonNCBI_Red5",
+           job.init   = "asub ",
+           job.opts   = "-q normal -R rusage[tmp=2000]",   
+           stem       = file.path(output_dir, rg_id))
+#file.exists(genome)
+
+```
+##https://www.ibm.com/support/knowledgecenter/SSWRJV_10.1.0/lsf_admin/res_reqs_job_lsf.html
+
+
+## Merge the 3 Russell bamfiles.
+```{r}
+t <- 8
+setwd("/workspace/hrtcdf/FSTs/Russellalt/RumappedonRed5")
+bamfiles       <- dir("/workspace/hrtcdf/FSTs/Russellalt/RumappedonRed5", pattern = "*.bam$")
+#bamfiles
+output         <- 'RussellonRed5_merge.bam'
+samtools_merge <- glue("samtools merge {output} {bamfiles} -r")
+logDir         <- "/powerplant/workspace/hrtcdf/FSTs/Russellalt/RumappedonRed5/logDir"
+dir.create(logDir, recursive = TRUE, showWarnings = FALSE)
+    stopifnot(dir.exists(logDir))
+out_file       <- file.path(logDir, "job.out")
+err_file       <- file.path(logDir, "job.err")
+bsub_cmd       <- glue("bsub -n {t} -o {out_file} -e {err_file} {samtools_merge}")
+system(bsub_cmd)
+```
+
+## index so -r chr25 can be called in mpileup. 
+```{r}
+t <- 8
+bamfiles       <- paste('RussellonRed5_merge.bam', sep = " ")
+output         <- 'RussellonRed5_merge.bam.bai'
+samtools_index <- glue("samtools index {bamfiles} {output} -c")
+logDir         <- "/powerplant/workspace/hrtcdf/FSTs/Russellalt/logDir"
+dir.create(logDir, recursive = TRUE, showWarnings = FALSE)
+    stopifnot(dir.exists(logDir))
+out_file       <- file.path(logDir, "job.out")
+err_file       <- file.path(logDir, "job.err")
+bsub_cmd       <- glue("bsub -n {t} -o {out_file} -e {err_file} {samtools_index}")
+system(bsub_cmd)
+```
+
+```{r run-mileup for chr25}
+submit_mpileup <- function(reference = "genome", 
+                           output = c(), 
+                           bamfiles = c(), 
+                           job.init = "asub", 
+                           job.opts = "-q normal -n 8")
+{
+  cmd <- "bcftools mpileup -B -I -Q 0 -a {mpileuptags} -f {reference} {bamfile} | bcftools call -f {bcfcalltags} -p {pvalThres} -m -A -Oz -o {output} && bcftools index {output}"
+  tmpf <- tempfile(pattern = "submit_mileup.", fileext = ".sh")
+  writeLines(text = c(glue(cmd)), con = tmpf)
+  submit <- "{job.init} {job.opts} {tmpf}"
+  system(glue(submit), intern = TRUE)
+}
+genome      <- genome_fasta()
+mpileuptags <- "DP,AD,INFO/AD"
+bcfcalltags <- "GQ,GP"
+  pvalThres <- 0.99
+
+bamfile     <- "RussellonRed5_merge.bam"
+
+out         <- "RussellpileonRed5.vcf.gz"
+reference   <- "/powerplant/output/genomic/plant/Actinidia/chinensis/CK51F3_01/Genome/Assembly/PS1/1.69.0/Chromosomes/WithoutNullChromosome/Fasta/Red5_PS1.1.69.0.fsa"
+#file.exists(bamfile)
+#file.exists(reference)
+submit_mpileup(reference = reference, output = out, bamfiles = bamfiles)
+```
+
+```{r filtering}
+bamfiles       <- 'RussellpileonRed5.vcf.gz'
+output         <- 'RussellpileonRed5_LG10_4-12mb.vcf.gz'
+logDir         <- "/powerplant/workspace/hrtcdf/FSTs/Russellalt/logDir"
+
+bcftools_filteralts <- glue("bcftools filter -r LG10:4000000-12000000  {bamfiles} -Oz -o {output}")
+
+out_file       <- file.path(logDir, "job.out"); err_file  <- file.path(logDir, "job.err")
+bsub_cmd       <- glue("bsub -n 8 -o {out_file} -e {err_file} {bcftools_filteralts}")
+
+system(bsub_cmd)
+
+```
+```{r}
+bcftools_index <- "bcftools index 'RussellpileonRed5_LG10_4-12mb.vcf.gz'"
+logDir         <- "/powerplant/workspace/hrtcdf/FSTs/Russellalt/logDir"
+out_file       <- file.path(logDir, "job.out"); err_file   <- file.path(logDir, "job.err")
+bsub_cmd       <- glue("bsub -n 8 -o {out_file} -e {err_file} {bcftools_index}")
+system(bsub_cmd)
+```
+
+```{r data.table} 
+RpileonRed5   <- "bcftools query 'RussellpileonRed5_LG10_4-12mb.vcf.gz' -R'/powerplant/workspace/hrtcdf/lataniaAlleles/Russellv2a/DTcsbed_LG10.bed'  -f'%CHROM\t%POS\t%REF\t%ALT\t%DP\t%AD\t%AD{0}\n'"
+getwd()
+RpileonRed5 <- fread(cmd=RpileonRed5, col.names = c('CHROM','POS','REF','ALT','DP','AD','REFal0'), key = 'POS')
+
+RpileonRed5lowdepth<- RpileonRed5[DP==0] 
+qplot(POS, data = RpileonRed5lowdepth)
+DTcbed_LG10 <- '/powerplant/workspace/hrtcdf/lataniaAlleles/Russellv2a/DTcsbed_LG10.bed'
+DTcbed_LG10 <- fread(DTcbed_LG10)
+## only 2 baits from DTcsbed_LG10.bed have sequence in Russellv2a that is not in Red5/PS1.69.0 these are removed below.
+DTcbed_LG10 <- DTcbed_LG10[V2!= 4082542 & V2!= 4020516]
+fwrite(DTcbed_LG10, sep= "\t", col.names = FALSE, file='DTcsbedLG10_Ru&R5.bed')
+file.copy ("DTcsbedLG10_Ru&R5.bed", "/powerplant/workspace/hrtcdf/lataniaAlleles/Russellv2a")
+```
+
+*##finished 14/12/2020and moving to AllelesnotinRussellv2a.Rmd.*
+*redoing on the NCBI reference for their header format*

@@ -1,0 +1,250 @@
+---
+title: "Russell Chr10:4000000-13000000 aligned on PS1.69.0"
+output: html_document
+---
+
+**this code will use RussellV2a fasta's 3-5kb against the NCBI PS1.69 to see where they align in relation to the Russell genome with the right headders.**
+
+use roys zipped reference as reference
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+library(RLinuxModules)
+library(data.table)
+library(glue)
+library(here)
+library(tidyverse)
+library(stringr)
+library(ggplot2)
+library(magrittr)
+library(GenomicRanges)
+devtools::load_all(here::here())
+raw_fastq_directory <- russell_raw_fastq_directory()
+raw_fastq_directory
+module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 vcftools")
+```
+
+```{r, echo = FALSE}
+raw_fastq_directory <- "/input/genomic/plant/Actinidia/chinensis/Russell/Genome/Illumina/AGRF_CAGRF12782_C9EUNANXX"
+
+read_pair_from_fastq <- function(file, idx = 7) {
+  moniker <- basename(file)
+  moniker <- tools::file_path_sans_ext(moniker)
+  moniker <- tools::file_path_sans_ext(moniker)
+  parts   <- strsplit(moniker, "_")[[1]]
+  as.integer(gsub(pattern = "R", replacement = "", x = parts[idx]))
+}
+lane_from_fastq <- function(file, idx = 6) {
+  moniker <- basename(file)
+  moniker <- tools::file_path_sans_ext(moniker)
+  moniker <- tools::file_path_sans_ext(moniker)
+  parts   <- strsplit(moniker, "_")[[1]]
+  as.integer(gsub(pattern = "L", replacement = "", x = parts[idx]))
+}
+barcode_from_fastq <- function(file, idx = 5, delim = "_") {
+  moniker <- basename(file)
+  moniker <- tools::file_path_sans_ext(moniker)
+  moniker <- tools::file_path_sans_ext(moniker)
+  parts   <- strsplit(moniker, delim)[[1]]
+  parts[idx]
+}
+sample_name_from_fastq <- function(file, idx = 1, delim = "_") {
+  moniker <- basename(file)
+  moniker <- tools::file_path_sans_ext(moniker)
+  moniker <- tools::file_path_sans_ext(moniker)
+  parts   <- strsplit(moniker, delim)[[1]]
+  parts[idx]
+}
+library_size_from_fastq <- function(file, idx = 2, delim = "_") {
+  moniker <- basename(file)
+  moniker <- tools::file_path_sans_ext(moniker)
+  moniker <- tools::file_path_sans_ext(moniker)
+  parts   <- strsplit(moniker, delim)[[1]]
+  return(paste0(c(parts[idx]), collapse = ""))
+}
+
+partition_fastq_files_table <- function(directory, sample_idx = 1, barcode_idx = 5, lane_idx = 6, read_idx = 7) {
+  dt <- data.table(path = dir(directory, full.names = TRUE, pattern = "\\.fastq\\.gz$"))  
+  dt[, `:=`(fastq_basename = basename(.SD[,path]),
+            read_pair      = read_pair_from_fastq(.SD[,path], read_idx),
+            lane           = lane_from_fastq(.SD[,path], lane_idx),
+            barcode        = barcode_from_fastq(.SD[,path], barcode_idx),
+            sample_name    = sample_name_from_fastq(.SD[,path], sample_idx),
+            size           = library_size_from_fastq(.SD[,path], idx = c(2,3))
+            ),
+         .SDcols = c('path'),
+         by = 1:nrow(dt)]
+  dt <- dt[dt[,.(fastq_basename, lane, barcode, read_pair)],
+           on=.(lane, barcode, read_pair < read_pair)][!is.na(fastq_basename)]
+  dt[, path := NULL]
+  dt[, read_pair := NULL]
+  colnames(dt) <- c("read_1", "lane", "barcode", "sample_name", "library_size", "read_2")
+  dt[, read_1:=file.path(directory, read_1)]
+  dt[, read_2:=file.path(directory, read_2)]
+  return(dt[,.(sample_name, read_1, read_2, library_size, lane, barcode)])
+}
+
+```
+
+## Get list of raw fastq files
+
+```{r, echo = FALSE}
+x1 <- partition_fastq_files_table(raw_fastq_directory)
+x1
+
+knitr::kable(x1)
+```
+
+## Subset
+Only align a small number of these.
+```{r}
+x2 <- x1[library_size == '3-5kb']
+knitr::kable(x2)
+```
+
+## Data Volume?
+
+```{r}
+filestats <- data.table(filename = c(x1$read_1, x1$read_2))
+filestats[, size := gdata::humanReadable(file.size(filename))]
+filestats[, is_read1 := grepl(x = filename, pattern = "_R1\\.")]
+filestats[, fastq := basename(filename)]
+knitr::kable(filestats[, .(fastq, size, is_read1)])
+```
+
+```{r make symlink to NCBI reference for index and index with bwa index for bwa alignment}
+mainDir <- "/powerplant/workspace/hrtcdf/FSTs/Russellalt/RumappedonNCBI_Red5"
+Red5NCBIdir <- "/workspace/ComparativeDataSources/Actinidia/chinensis/Red5_PS1_1.69.0/GCA_003024255.1_Red5_PS1_1.69.0"
+
+if (dir.exists(mainDir)){
+    setwd(file.path(mainDir))
+} else {
+    dir.create(file.path(mainDir))
+    setwd(file.path(mainDir))
+}
+
+Red5NCBIref <- dir(Red5NCBIdir, pattern = "*0_genomic.fna$", full.names = TRUE, include.dirs = TRUE)
+
+file.symlink (Red5NCBIref, mainDir)
+symref         <- "/powerplant/workspace/hrtcdf/FSTs/Russellalt/RumappedonNCBI_Red5/GCA_003024255.1_Red5_PS1_1.69.0_genomic.fna"
+
+## index with bwa index
+bwaindex       <- glue("bwa index {symref}")
+logDir         <- "/powerplant/workspace/hrtcdf/FSTs/Russellalt/RumappedonNCBI_Red5/logDir"
+dir.create(logDir, recursive = TRUE, showWarnings = FALSE)
+    stopifnot(dir.exists(logDir))
+out_file       <- file.path(logDir, "job.out")
+err_file       <- file.path(logDir, "job.err")
+bsub_cmd       <- glue("bsub -n 8 -o {out_file} -e {err_file} {bwaindex}")
+system(bsub_cmd)
+
+```
+
+## Get the read pairs for `bwa` we want the files in read pairs...
+## Alignments ammended 23/11
+Run the alignments with bwa [1], assigning read group identifiers from the targetsfile.
+```{r}
+submit_bwa <- function(rg_id       = c(),
+                       rg_sample   = c(),
+                       threads     = c(),
+                       pair1       = c(),
+                       pair2       = c(),
+                       output_dir  = c(),
+                       job.init    = c(),
+                       job.opts    = c(),
+                       stem        = c()) {
+  # prepare output file names and directory
+  stem <- file.path(output_dir, rg_id)
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+    stopifnot(dir.exists(output_dir))
+  symgenome     <- "/powerplant/workspace/hrtcdf/FSTs/Russellalt/RumappedonNCBI_Red5/GCA_003024255.1_Red5_PS1_1.69.0_genomic.fna"
+  # fill in the command, and write to disk
+submit_bwa
+  cmd <- glue::glue("bwa mem -t 8 -R '@RG\\tID:{rg_id}\\tSM:{rg_sample}' {symgenome} {pair1} {pair2} | samtools sort -l 9 -O bam -o {stem}.bam - && samtools index {stem}.bam")
+  tmpf <- tempfile(pattern = "submit_bwa.", fileext = ".sh")
+  writeLines(text = cmd, con = tmpf)
+  rg_sample  = paste("Russell", x2$lane, x2$barcode, sep = "_")
+  cmd
+  # submit the jobs
+  submit <- "{job.init} {job.opts} {tmpf}"
+  system(glue(submit), intern = TRUE)
+}
+
+submit_bwa(rg_id      = paste("Russell", seq_along(rg_sample), sep = "_"),
+           rg_sample  = paste("Russell", x2$lane, x2$barcode, sep = "_"),
+           pair1      = x2$read_1,
+           pair2      = x2$read_2,
+           output_dir = "/workspace/hrtcdf/FSTs/Russellalt/RumappedonNCBI_Red5",
+           job.init   = "asub",
+           job.opts   = "-q normal -R rusage[tmp=2000]",   
+           stem       = file.path(output_dir, rg_id))
+file.exists(symgenome)
+```
+##https://www.ibm.com/support/knowledgecenter/SSWRJV_10.1.0/lsf_admin/res_reqs_job_lsf.html
+
+
+## Merge the 3 Russell bamfiles.
+```{r}
+bamfiles       <- dir("/workspace/hrtcdf/FSTs/Russellalt/RumappedonNCBI_Red5", pattern = "*.bam$")
+bamfiles
+output         <- 'RussellonNCBIRed5_merge.bam'
+samtools_merge <- glue("samtools merge {output} {bamfiles} -r")
+logDir         <- "/powerplant/workspace/hrtcdf/FSTs/Russellalt/RumappedonNCBI_Red5/logDir"
+dir.create(logDir, recursive = TRUE, showWarnings = FALSE)
+    stopifnot(dir.exists(logDir))
+out_file       <- file.path(logDir, "job.out")
+err_file       <- file.path(logDir, "job.err")
+bsub_cmd       <- glue("bsub -n 8 -o {out_file} -e {err_file} {samtools_merge}")
+system(bsub_cmd)
+```
+
+## index so -r chr25 can be called in mpileup. 
+```{r}
+bamfiles       <- paste('RussellonNCBIRed5_merge.bam', sep = " ")
+output         <- 'RussellonNCBIRed5_merge.bam.bai'
+samtools_index <- glue("samtools index {bamfiles} {output} -c")
+logDir         <- file.path(logDir)
+out_file       <- file.path(logDir, "job.out"); err_file       <- file.path(logDir, "job.err")
+bsub_cmd       <- glue("bsub -n 8 -o {out_file} -e {err_file} {samtools_index}")
+system(bsub_cmd)
+```
+
+```{r run-mileup for chr25}
+submit_mpileup <- function(reference = "genome", 
+                           output = c(), 
+                           bamfiles = c(), 
+                           job.init = "asub", 
+                           job.opts = "-q normal -n 8")
+{
+  cmd <- "bcftools mpileup -B -Q 10 -a {mpileuptags} -f {reference} {bamfile} | bcftools call -f {bcfcalltags} -p {pvalThres} -m -A -Oz -o {output} && bcftools index -f {output}"
+  tmpf <- tempfile(pattern = "submit_mileup.", fileext = ".sh")
+  writeLines(text = c(glue(cmd)), con = tmpf)
+  submit <- "{job.init} {job.opts} {tmpf}"
+  system(glue(submit), intern = TRUE)
+}
+genome      <- genome_fasta()
+mpileuptags <- "FORMAT/DP,FORMAT/AD,INFO/AD"
+bcfcalltags <- "GQ,GP"
+  pvalThres <- 0.99
+
+bamfile     <- "RussellonNCBIRed5_merge.bam"
+
+out         <- "RussellonNCBIRed5pile.vcf.gz"
+reference   <- "/powerplant/workspace/hrtcdf/FSTs/Russellalt/RumappedonNCBI_Red5/GCA_003024255.1_Red5_PS1_1.69.0_genomic.fna"
+file.exists(bamfile)
+file.exists(reference)
+submit_mpileup(reference = reference, output = out, bamfiles = bamfiles)
+```
+
+```{r run-mileup for chr10:3000000-14000000 which is in NCBI CM009663.1:3000000-14000000}
+
+vcfcmd      <- "bcftools view -r 'CM009663.1:3000000-14000000' 'RussellonNCBIRed5pile.vcf.gz' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
+
+DTRu2a_alts <- fread(cmd=vcfcmd, col.names = c('rSAMPLE','POS','rREF','rALT','rDP','rAD','rAD0','rAD1','rAD2','rAD3'), key = 'POS')
+getwd()
+```
+
+
+
+
+

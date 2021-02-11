@@ -1,0 +1,49 @@
+---
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(future.batchtools)
+library(data.table)
+library(stringr)
+library(tidyr)
+library(dplyr)
+library(RLinuxModules)
+plan(batchtools_openlava)
+module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 vcftools")
+Sys.setenv("DEBUGME"="TRUE")
+```
+
+```{r transform filenames to sample, lane and suffix for data.table from link}
+pattern <- c("HW5YYDSXX_A1_L003.bam", "HW5YYDSXX_B2_L003.bam", "HW5YYDSXX_C3_L003.bam",
+"HW5YYDSXX_E11_L003.bam", "HW5YYDSXX_F12_L003.bam", "HW5YYDSXX_G13_L004.bam", "HW5YYDSXX_H14_L004.bam","HW5YYDSXX_I15_L004.bam","HW5YYDSXX_J16_L004.bam")
+
+pattern <- str_replace(pattern, "XX_" , "XX_&")
+pattern <- str_replace(pattern, "_L" , "&_L")
+pattern <- str_replace(pattern, ".bam" , "&.bam")
+pattern
+malepooldt <- {data.table(pattern) %>%
+  separate(pattern, into = c("HL55", "sample", "lane", "bam", "version"), sep = "&", fill = "right") %>%
+  mutate("version" = str_extract(sample, regex("/")))
+}
+malepooldt
+
+colnames(malepooldt) <- c("HL55", "sample", "lane", "bam", "version" )
+```
+
+```{r}
+plan(batchtools_openlava,
+     resources = list("omp.threads" = 1, memory = 128 * 1048576))
+fil <-  paste("withhom", malepooldt$sample, "_chr25_pile.vcf.gz", sep = "")
+fil
+dat <- future({lapply(files,  fread,  col.names = c('mpSAMPLE','mpCHROM','POS','mpREF','mpALT','mpDP','mpAD0','mpAD1','mpAD2','mpAD3','mpAC','mpAN','mpGT',"1"), key = 'POS')})
+#  bcfcmd  <-  "bcftools query /powerplant/workspace/hrtcdf/FSTs/Russellalt/Russellpile_chr25.vcf.gz -f '[[%SAMPLE]]\t%CHROM\t%POS\t%REF\t%ALT\t%DP\t%AD\t%AD{{0}}\t%AD{{1}}\t%AD{{2}}\t%AD{{3}}\t%AC\t%AN [[\t%GT]]\n' "
+  
+#DTruref_withalt <- fread(cmd = bcfcmd, col.names = c('rSAMPLE', 'rCHROM', 'POS', 'rREF', 'rALT', 'rDP', 'rAD', 'rAD0', 'rAD1','rAD2', 'rAD3','rAC', 'rAN'),  key = 'POS', verbose = FALSE)
+  
+value(dat)
+```
+
+
+

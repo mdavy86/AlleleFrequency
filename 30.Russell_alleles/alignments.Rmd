@@ -1,0 +1,67 @@
+---
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(data.table)
+library(devtools)
+library(ggplot2)
+library(glue)
+library(here)
+library(magrittr)
+library(RLinuxModules)
+module("load bwa")
+devtools::load_all(here::here())
+raw_fastq_directory <- russell_raw_fastq_directory()
+raw_fastq_directory
+```
+
+## Get list of raw fastq files
+
+```{r, echo = FALSE}
+x1 <- partition_fastq_files_table(raw_fastq_directory)
+knitr::kable(x1)
+```
+
+## Subset
+Only align a small number of these.
+```{r}
+x2 <- x1[library_size == '3-5kb']
+knitr::kable(x2)
+```
+
+## Data Volume?
+
+```{r}
+filestats <- data.table(filename = c(x1$read_1, x1$read_2))
+filestats[, size := gdata::humanReadable(file.size(filename))]
+filestats[, is_read1 := grepl(x = filename, pattern = "_R1\\.")]
+filestats[, fastq := basename(filename)]
+knitr::kable(filestats[, .(fastq, size, is_read1)])
+```
+
+## bwa options
+
+```{r, engine = "bash"}
+bwa mem -help
+exit 0
+```
+## Get the read pairs
+
+For `bwa` we want the files in read pairs...
+
+```{r}
+first_reads <- x2$read_1
+second_reads <- x2$read_2
+output_dir <- '/tmp'
+bam <- file.path(output_dir, paste("russell", x2$lane, x2$barcode, sep = "_"))
+bam
+threads <- 8
+rg_sample <- paste("russell", x2$lane, x2$barcode, sep = "_")
+rg_id <- paste("Russell", seq_along(rg_sample), sep = "_")
+options <- '-B '
+genome <- genome_fasta()
+glue("bwa mem -t {threads} -R '@RG\\tID:{rg_id}\\tSM:{rg_sample}' {genome} {first_reads} {second_reads} | samtools sort -@ 2 -l 9 -O BAM -o {bam}.bam - && samtools index {bam}.bam")
+```
+

@@ -1,0 +1,45 @@
+---
+title: "tutorial"
+author: "Casey"
+date: "13/12/2019"
+output: 
+  github_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(future)
+library(future.apply)
+library(qtl)
+library(RLinuxModules)
+plan(multicore)
+module("load R/3.6.1")
+```
+
+# load input
+
+```{r}
+Hru <- read.cross (format = "csvs",
+                   dir = "/workspace/hrtcdf/Rqtl/HRuRqtl",
+                   genfile = "LatRqtl_gen.csv", 
+                   phefile = "LatRqtl_phe.csv")
+chromosome_count <- length(Hru$geno)
+chromosome_set <- 1:chromosome_count
+```
+
+# step one
+
+
+```{r}
+Hru <- future_lapply(fun = function() {}, X = dataset)
+```
+
+# step two
+
+```{r engine="bash"}
+for chr in $(seq 1 29)
+do
+  echo r another-script.R $chr
+done | asub -j 'step two'
+```

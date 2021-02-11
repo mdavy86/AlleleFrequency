@@ -13,7 +13,9 @@ library(glue)
 library(here)
 library(tidyverse)
 library(stringr)
-module("load openlava asub bwa/0.7.12 samtools/1.9 bcftools/1.10.2")
+library(ggplot2)
+library(magrittr)
+module("load openlava asub bwa/0.7.12 samtools/1.9 bcftools/1.10.2 vcftools")
 ```
 
 ```{r}
@@ -33,35 +35,20 @@ if (dir.exists(mainDir)){
 tpoolfiles <- dir(royDir, pattern = "^HL55WDRXX", full.names = TRUE, include.dirs = TRUE)
 
 file.symlink (tpoolfiles, outDir)
-## cant seem to get the full pathname into the symlink file. it doesnt need it.
+## we don't need the full pathname into the symlink file.
 ```
-
-
-```{r transform filenames to sample and directory for data.table}
-files <- dir("/workspace/hrards/projects/hrtcdf/10.alignments/bwa", pattern = "^HL55WDRXX", full.names = TRUE)
-apfiles <- str_replace(files, "HL55WDRXX_" , "HL55WDRXX_&")
-
-dt <- {data.table(apfiles) %>%
-  separate(apfiles, into = c("dir", "sample"), sep = "&", fill = "left") %>%
-  mutate("version" = str_extract(dir, regex("/")))
-}
-
-colnames(dt) <- c("dir", "sample", "version")
-write.table(dt, 'testpool.tsv')
-```
-
 
 ```{r transform filenames to sample, lane and suffix for data.table from link}
 #setwd("/powerplant/workspace/hrtcdf/FSTs/TestPool/bamlinkindexed")
 wd <- ("/powerplant/workspace/hrtcdf/FSTs/TestPool/bamlinkindexed/")
 wd
-pattern <- c(".bai", "log", ".tsv")
+pattern <- c(".bai", "log", ".tsv", ".txt", ".Rmd")
 f <- grep(paste(pattern, collapse = "|"), list.files(path="."),  invert=TRUE, value=TRUE)
 f
 str1 <- str_replace(f, "XX_" , "XX_&")
 str2 <- str_replace(str1, "_L" , "&_L")
 str3 <- str_replace(str2, ".bam" , "&.bam&")
-str3
+str3 
 lindts <- {data.table(str3) %>%
   separate(str3, into = c("HL55", "sample", "lane", "bam", "version"), sep = "&", fill = "left") %>%
   mutate("version" = str_extract(sample, regex("/")))
@@ -72,10 +59,79 @@ colnames(lindts) <- c("HL55", "sample", "lane", "bam", "version" )
 #write.table(lindts, 'linkpool.tsv')
 ```
 
-#Still need to make read groups so each sample lane can be merged into one before mpileup? this will have to be done for the full pool data.
-```{r run-mileup for chr25}
+```{bash index.bai}
+t=8
+#inDir="/powerplant/workspace/hrtcdf/FSTs/TestPool/bamlinkindexed"
+logDir="/powerplant/workspace/hrtcdf/FSTs/TestPool/bamlinkindexed/logDir"
+if  [ ! -d  "logDir" ]; then mkdir "logDir" ; fi
+
+for vcf in $(ls *.bam); do
+bsub -n $t -o $logDir/$vcf.err -e $logDir/$vcf.err "samtools index $vcf > $vcf.bai"
+#echo $vcf
+done
+```
+
+##read groups are unique in the full bam file but there are 
+```{bash}
+#samtools view -H "HL55WDRXX_CK19_03B_L002.bam" | grep '@RG'
+#samtools view -H "CK22_03_merged25a.bam.gz" | head -n 100
+```
+
+##Write each sample name individually and run. a loop with $sample has 2 copies of sample name so dont loop, also individuals can fail and need to be run seperately.
+
+```{r}
+#cd "/"
+t <- 9
+bamfiles      <- paste(lindts$HL55, lindts$sample, lindts$lane, lindts$bam, sep = "")
+#bamfiles
+#file.exists (bamfiles)
+L001 <- str_subset(bamfiles, "L001")
+L002 <- str_subset(bamfiles, "L002")
+lanemerge <- str_c(L001, L002, sep = " ", collapse = NULL)
+#lanemerge
+
+merge_output  <- paste(unique(lindts$sample), ".bam.gz", sep = "")
+samtools_merge <- glue("samtools merge {merge_output} {lanemerge}")
+#samtools_merge
+tmpfile <- tempfile()
+writeLines(samtools_merge,con = tmpfile)
+readLines(tmpfile)
+asub_cmd <- glue("asub -n {t} -q normal {tmpfile}")
+system(asub_cmd)
+```
+
+## use samtools for indexing normal?, tabix and stats.
+```{bash}
+t=9
+logDir="/powerplant/workspace/hrtcdf/FSTs/TestPool/bamlinkindexed/logDir"
+if  [ ! -d  "logDir" ]; then mkdir "logDir" ; fi
+
+for vcf in $(ls CK02_01.bam.gz ); do
+#bsub -n $t -o $logDir/$vcf.log -e $logDir/$vcf.err "bcftools stats $vcf > ${vcf}.stats "
+#bsub -n $t -o $logDir/$vcf.log -e $logDir/$vcf.err "gunzip -c | bcftools index -t $vcf"
+bsub -n $t -o $logDir/$vcf.log -e $logDir/$vcf.err "samtools index $vcf"
+#echo c${vcf}
+done
+```
+```{r transform filenames to sample, lane and suffix for data.table from link}
+pattern <- c(".bam.gz") #(".bai", "log", ".tsv", ".txt", ".err", ".out", ".sh", ".Rmd")
+f <- grep(paste(pattern, collapse = "|"), list.files(path="."),  invert=FALSE, value=TRUE)
+#f
+str1 <- str_replace(f, ".bam.gz" , "&.bam.gz&")
+str1
+lindts <- {data.table(str1) %>%
+  separate(str1, into = c("sample", "bam", "version"), sep = "&", fill = "left") %>%
+  mutate("version" = str_extract(sample, regex("/")))
+}
+lindts
+
+colnames(lindts) <- c("sample", "bam", "version" )
+#write.table(lindts, 'linkpool.tsv')
+```
+
+```{r run-mileup}
 submit_mpileup <- function(reference = "*.fa.gz", output = c(), bamfiles = c(), job.init = "asub", job.opts = "-q normal") {
-  cmd <- "bcftools mpileup -B -Q 0 -f {reference} -r chr25 -a {mpileuptags} {bamfiles} -Ou | bcftools call -f {bcfcalltags} -p {pvalThres} -m -A -Oz -o {output}"
+  cmd <- "bcftools mpileup -B -Q 0 -f {reference} -a {mpileuptags} {bamfiles} -Ou | bcftools call -f {bcfcalltags} -p {pvalThres} -m -A -Oz -o {output}"
   tmpf <- tempfile(pattern = "submit_mileup.", fileext = ".sh")
   writeLines(text = c(glue(cmd)), con = tmpf)
   submit <- "{job.init} {job.opts} {tmpf}"
@@ -85,31 +141,61 @@ mpileuptags <- "DP,AD,ADF,ADR,SP,INFO/AD,INFO/ADF,INFO/ADR"
 bcfcalltags <- "GQ,GP"
   pvalThres <- 0.99
 
-bamfiles <- paste(lindts$HL55, lindts$sample, lindts$lane, lindts$bam, sep = "")
+bamfiles <- paste(lindts$sample, lindts$bam, sep = "")
 #bamfiles
-sample   <- paste(lindts$sample,lindts$lane, sep = "")
-sample   <- paste(tools::file_path_sans_ext(sample), "25a_bam.gz", sep = ".")
-#sample
-
+sample2   <- paste(lindts$sample, "piled.vcf.gz", sep = "_")
 reference <- dir("/workspace/hrards/projects/hrtcdf/genome/fasta", pattern = ".*\\.gz$", full.names = TRUE)
 #reference
 
 #file.exists(bamfiles)
 #file.exists(reference)
 
-submit_mpileup(reference = reference, output = sample, bamfiles = bamfiles)
+submit_mpileup(reference = reference, output = sample2, bamfiles = bamfiles)
 ```
 
-## run for unzipped file once working and run through Tassel 5 for hapmap format.
-## -e 'F_MISSING>0.0' takes out all individuals with a missing genotype.
-```{r, engine='bash' eval=FALSE}
+```{bash}
+#vcftools manual - Output allele frequency for all sites in the input vcf file from chromosome 1
+logDir="/powerplant/workspace/hrtcdf/FSTs/TestPool/bamlinkindexed/logDir"
 
-t   <- 8
-x   <- f
-bwa <- bwa ## change from [bwa_subset] to [bwa] to run full set not including square brackets.
-logDir <- "/powerplant/workspace/hrtcdf/GBSremap/15_FilterVCF/logDir"
-tts <- logDir bwa
-tts
+for vcf in $(ls CK02_01_chr25.bcf.gz); do
+bsub -n 9 -o $logDir/$vcf.log -e $logDir/$vcf.err "vcftools --gzvcf $vcf --freq --out ${vcf}"
 
-bsub -n t -o logDir/bwa_{x}.log -e $logDir/${bwa}_${x}.err "bcftools view -i 'INFO/MAF[0]>0.05 && AVG(INFO/DP)>16 && QUAL>=20' $sample | bcftools filter -e 'F_MISSING>0.0' -g9 -G9 -o ${bwa}_${x}.vcf && bcftools stats ${bwa}_${x}.vcf > ${bwa}_${x}.vcf.stats && run_pipeline.pl -fork1 -vcf ${bwa}_${x}.vcf -export ${bwa}_${x} -exportType Hapmap -runfork1"
+done
 ```
+uCK02_01_chr25.bcf.gz
+
+##https://github.com/caseyflay/HighHealth/blob/master/QTLSeqr/CheckAlleleFreqs.Rmd
+##Calculate AF over all pools on CHR1 
+##zcat CKRussell_piled.vcf.gz | head -n 100
+##CHROM  POS     ID      REF     ALT     QUAL    FILTER  INFO    FORMAT  D6
+##chr1    1       .       C       .       63      .       DP=1;ADF=1;ADR=0;AD=1;MQ0F=0;AN=2;DP4=1,0,0,0;MQ=33     GT:DP:SP:ADF:ADR:AD     0/0:1:0:1:0:1
+
+```{r}
+#piledvcf <- paste(lindts$sample, "piled.vcf.gz", sep = "_")
+file.exists("CK02_01.bam.gz")
+bcfcmd <- "bcftools query -f '%CHROM\t%POS\n' CK10_02_piled.vcf.gz | awk '{print $1,$2}'"
+DT <- fread(cmd=bcfcmd,col.names = c('CHR','POS'))
+```
+
+
+```{r message=FALSE, warning=FALSE}
+DT[,qplot(AF)]
+```
+
+```{bash}
+#grep "AF" CK02_01_chr25.bcf.gz
+#grep --help
+#awk CK02_01_chr25.bcf.gz $1 | $2 'chr25:1737600'
+##get header from .gz references: zcat Russell_V2a.fa.gz | grep '>' | less
+#view .gz vcf files zcat CK02_01_chr25.bcf.gz | head -n 30
+
+#zcat CK02_01_chr25.bcf.gz | grep -v "386373" | cut -f1,2,3,4,5,6,7,8,9,10 | head -n 30
+
+#zcat CK02_01_chr25.bcf.gz | awk -v "AD" | cut -f1,2,3,4,5,6,7,8,9,10 | head -n 30
+```
+
+
+#git add 'filename' 
+#git commit 
+#git push origin master
+
