@@ -28,7 +28,7 @@ module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 vcftools"
 ```
 
 ```{r symlink}
-mainDir <- "/powerplant/workspace/hrtcdf/FSTs/"
+mainDir <- "/powerplant/workspace/hrtcdf/github/FSTs/"
 subDir <- "malepool"
 royDir <- "/workspace/hrards/projects/hrtcdf/10.alignments/bwa"
 outDir <- str_c(mainDir, subDir, sep = "", collapse = TRUE)
@@ -67,7 +67,7 @@ colnames(malepooldt) <- c("HL55", "sample", "lane", "bam", "version" )
 ## use samtools for indexing normal?, tabix and stats.
 ```{bash}
 t=8
-logDir="/powerplant/workspace/hrtcdf/FSTs/malepool/logDir"
+logDir="/powerplant/workspace/powerplant/workspace/hrtcdf/github/FSTs/malepool/logDir"
 if  [ ! -d  "logDir" ]; then mkdir "logDir" ; fi
 
 for vcf in $(ls *filt.vcf.gz); do
@@ -117,7 +117,7 @@ vcfin       <- paste(malepooldt1$sample, malepooldt1$chr, malepooldt1$work, male
 for (i in vcfin){
 vcfcmd      <- glue::glue("bcftools query {i} -e 'INFO/DP<30 || INFO/DP>120 || INFO/AD[0]=INFO/AD[1] || INFO/AD[1]<10' -f '[[%SAMPLE]]\t%CHROM\t%POS\t%REF\t%ALT\t%DP\t%AD\t%AD{{0}}\t%AD{{1}}\t%AD{{2}}\t%AD{{3}}\t%AC\t%AN [[\t%GT]]\n' -o 'f{i}' ")
 vcfcmd
-logDir         <- "/powerplant/workspace/hrtcdf/FSTs/malepool/logDir"
+logDir         <- "/powerplant/workspace/hrtcdf/github/FSTs/malepool/logDir"
 bsub_out_file  <- file.path(logDir, "job.out"); bsub_err_file <- file.path(logDir, "job.err")
 bsub_cmd       <- glue("bsub -n 8 -o {bsub_out_file} -e {bsub_err_file} {vcfcmd}")
 system(bsub_cmd)
@@ -129,7 +129,7 @@ vcfin       <- paste(malepooldt1$sample, malepooldt1$chr, malepooldt1$work, male
 #to10mb
 for (i in vcfin){
 vcfcmd      <- glue::glue("bcftools query {i} -r 'chr25:1-10000000' -e 'INFO/DP<30 || INFO/DP>120' -f '[[%SAMPLE]]\t%POS\t%REF\t%ALT\t%ALT{{0}}\t%ALT{{1}}\t%ALT{{2}}\t%DP\t%AD\t%AD{{0}}\t%AD{{1}}\t%AD{{2}} \n' -o 'to10mbwithhom{i}' ")
-logDir         <- "/powerplant/workspace/hrtcdf/FSTs/malepool/logDir"
+logDir         <- "/powerplant/workspace/hrtcdf/github/FSTs/malepool/logDir"
 bsub_out_file  <- file.path(logDir, "job.out"); bsub_err_file <- file.path(logDir, "job.err")
 bsub_cmd       <- glue("bsub -n 8 -o {bsub_out_file} -e {bsub_err_file} {vcfcmd}")
 system(bsub_cmd)
@@ -138,7 +138,7 @@ system(bsub_cmd)
 #from10mb
 for (i in vcfin){
 vcfcmd2      <- glue::glue("bcftools query {i} -r 'chr25:10000001-' -e 'INFO/DP<30 || INFO/DP>120' -f '[[%SAMPLE]]\t%POS\t%REF\t%ALT\t%ALT{{0}}\t%ALT{{1}}\t%ALT{{2}}\t%DP\t%AD\t%AD{{0}}\t%AD{{1}}\t%AD{{2}} \n' -o 'from10Mbwithhom{i}'")
-logDir         <- "/powerplant/workspace/hrtcdf/FSTs/malepool/logDir"
+logDir         <- "/powerplant/workspace/hrtcdf/github/FSTs/malepool/logDir"
 bsub_out_file  <- file.path(logDir, "job.out"); bsub_err_file <- file.path(logDir, "job.err")
 bsub_cmd       <- glue("bsub -n 8 -o {bsub_out_file} -e {bsub_err_file} {vcfcmd2}")
 system(bsub_cmd)
@@ -165,7 +165,7 @@ names(dat) <- malepooldt$sample
 ```
 
 ```{r get Russellv2a alts to remove russell snps from male pools}
-bcfcmd  <- "bcftools query /powerplant/workspace/hrtcdf/FSTs/Russellalt/Russellpile_chr25.vcf.gz -r 'chr25:1-10000000' -f '[%SAMPLE]\t%POS\t%REF\t%ALT\t%ALT{0}\t%ALT{1}\t%ALT{2}\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\n' 2>/dev/null"
+bcfcmd  <- "bcftools query /powerplant/workspace/hrtcdf/github/FSTs/Russellalt/Russellpile_chr25.vcf.gz -r 'chr25:1-10000000' -f '[%SAMPLE]\t%POS\t%REF\t%ALT\t%ALT{0}\t%ALT{1}\t%ALT{2}\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\n' 2>/dev/null"
 DTruref_withalt <- fread(cmd=bcfcmd, col.names = c('rSAMPLE','POS','rREF','rALT','rALT0','rALT1','rALT2','rDP','rAD','rAD0','rAD1','rAD2'), key = 'POS', verbose = FALSE) 
 #qplot(POS, DP, data = DTrualt, color = alta1)
 ```
@@ -232,7 +232,7 @@ lapply(datonlyrualt, function(x) qplot(AD1.x, Altoverrefdep, data = x, color = G
 ```
 
 ```{r get Russellv2a homs to access pools alts and recover usefull allele frequency} 
-bcfcmd   <- "bcftools query '/powerplant/workspace/hrtcdf/FSTs/Russellalt/Russellpile.vcf.gz' -r 'chr25' -f '%POS\t%REF\t%ALT\t%DP\n'"
+bcfcmd   <- "bcftools query '/powerplant/workspace/hrtcdf/github/FSTs/Russellalt/Russellpile.vcf.gz' -r 'chr25' -f '%POS\t%REF\t%ALT\t%DP\n'"
 
 DTruhom <- fread(cmd=bcfcmd, col.names = c('POS','REF','ALT','DP','AD','AD0','AD1','AD2','AC'), key = 'POS')
 #take out the russell heterozygotes
