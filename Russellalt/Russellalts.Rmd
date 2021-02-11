@@ -144,7 +144,7 @@ submit_bwa(rg_id      = paste("Russell", seq_along(rg_sample), sep = "_"),
            threads    = 8,
            pair1      = x2$read_1,
            pair2      = x2$read_2,
-           output_dir = "/workspace/hrtcdf/FSTs/Russellalt",
+           output_dir = "/workspace/hrtcdf/github/FSTs/Russellalt",
            job.init   = "asub ",
            job.opts   = "-q normal -R rusage[tmp=2000]",   
            stem       = file.path(output_dir, rg_id))
@@ -158,7 +158,7 @@ t <- 8
 bamfiles       <- paste('Russell_1.bam', 'Russell_2.bam', 'Russell_3.bam', sep = " ")
 output         <- 'Russell_merge.bam'
 samtools_merge <- glue("samtools merge {output} {bamfiles} -r")
-logDir         <- "/powerplant/workspace/hrtcdf/FSTs/Russellalt/logDir"
+logDir         <- "/powerplant/workspace/hrtcdf/github/FSTs/Russellalt/logDir"
 dir.create(logDir, recursive = TRUE, showWarnings = FALSE)
     stopifnot(dir.exists(logDir))
 out_file       <- file.path(logDir, "job.out")
@@ -172,7 +172,7 @@ t <- 8
 bamfiles       <- paste('Russell_merge.bam', sep = " ")
 output         <- 'Russell_merge.bam.bai'
 samtools_index <- glue("samtools index {bamfiles} {output} -c")
-logDir         <- "/powerplant/workspace/hrtcdf/FSTs/Russellalt/logDir"
+logDir         <- "/powerplant/workspace/hrtcdf/github/FSTs/Russellalt/logDir"
 dir.create(logDir, recursive = TRUE, showWarnings = FALSE)
     stopifnot(dir.exists(logDir))
 out_file       <- file.path(logDir, "job.out")
@@ -211,7 +211,7 @@ submit_mpileup(reference = reference, output = out, bamfiles = bamfiles)
 ```{r filtering for chr25}
 bamfiles       <- 'Russellpile.vcf.gz'
 output         <- 'Russellpile_chr25.vcf.gz'
-logDir         <- "/powerplant/workspace/hrtcdf/FSTs/Russellalt/logDir"
+logDir         <- "/powerplant/workspace/hrtcdf/github/FSTs/Russellalt/logDir"
 
 bcftools_filter_chr25 <- glue("bcftools filter -r chr25 -e 'INFO/DP<20 || INFO/DP>200 || QUAL<=20' {bamfiles} -Oz -o {output}")
 
@@ -223,7 +223,7 @@ system(bsub_cmd)
 ```{r additional filtering to only retrieve hets}
 bamfiles       <- 'Russellpile.vcf.gz'
 output         <- 'Russellpile_chr25alts.vcf.gz'
-logDir         <- "/powerplant/workspace/hrtcdf/FSTs/Russellalt/logDir"
+logDir         <- "/powerplant/workspace/hrtcdf/github/FSTs/Russellalt/logDir"
 
 bcftools_filteralts <- glue("bcftools filter -r chr25 -e 'INFO/AD[0]=INFO/AD[1] || INFO/DP<30 || INFO/DP>120 || QUAL<=20 || INFO/INDEL=1' -g9 -G9 {bamfiles}  -Oz -o {output}")
 
