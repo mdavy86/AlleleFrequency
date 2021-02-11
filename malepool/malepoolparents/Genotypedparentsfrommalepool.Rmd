@@ -6,7 +6,7 @@ output:
   html_document: default
   word_document: default
 ---
-
+**include the /github/** 
 use roys zipped reference as reference
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -42,8 +42,8 @@ x1[, "barcode" := (fafilesbarcode[, c(2)])]
 read1_from <- file.path(x1$path, x1$read1)
 read2_from <- file.path(x1$path, x1$read2)
 
-read1_to <- file.path("/powerplant/workspace/hrtcdf/FSTs/malepool/malepoolparents", x1$read1)
-read2_to <- file.path("/powerplant/workspace/hrtcdf/FSTs/malepool/malepoolparents", x1$read2)
+read1_to <- file.path("/powerplant/workspace/hrtcdf/github/FSTs/malepool/malepoolparents", x1$read1)
+read2_to <- file.path("/powerplant/workspace/hrtcdf/github/FSTs/malepool/malepoolparents", x1$read2)
 
 files <- data.table(from = c(read1_from, read2_from), to = c(read1_to, read2_to))
 files[,created_symlink := suppressWarnings(file.symlink(from, to)), by=1:nrow(files)]
@@ -51,7 +51,7 @@ files
 ```
 
 ```{r symlink reference}
-mainDir <- "/powerplant/workspace/hrtcdf/FSTs/malepool/malepoolparents"
+mainDir <- "/powerplant/workspace/hrtcdf/github/FSTs/malepool/malepoolparents"
 royDir <- "/powerplant/workspace/hrards/projects/hrtcdf/genome/fasta"
 outDir <- str_c(mainDir, sep = "", collapse = TRUE)
 
@@ -85,7 +85,7 @@ submit_bwa <- function(rg_id       = c(),
   stem       = file.path(output_dir, paste(x1$sampleid_github, x1$pedigree_item, sep="or"))
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
     stopifnot(dir.exists(output_dir))
-  symgenome     <- "/powerplant/workspace/hrtcdf/FSTs/malepool/malepoolparents/Russell_V2a.fa.gz"
+  symgenome     <- "/powerplant/workspace/hrtcdf/github/FSTs/malepool/malepoolparents/Russell_V2a.fa.gz"
   file.exists(symgenome)
   # fill in the command, and write to disk
 submit_bwa
@@ -149,7 +149,7 @@ genome      <- genome_fasta()
 mpileuptags <- "FORMAT/DP,FORMAT/AD,INFO/AD"
 bcfcalltags <- "GQ,GP"
 pvalThres   <- 0.99
-mainDir2    <- c("/powerplant/workspace/hrtcdf/FSTs/malepool/malepoolparents/")
+mainDir2    <- c("/powerplant/workspace/hrtcdf/github/FSTs/malepool/malepoolparents/")
 bamfiles    <- paste0(mainDir2, x2$sampleid_github, x2$or, x2$pedigree_item, x2$.bam)
 output      <- paste0(mainDir2, x2$pile, x2$sampleid_github, x2$or, x2$pedigree_item, x2$.vcf)
 reference   <- dir("/powerplant/workspace/hrards/projects/hrtcdf/genome/fasta", pattern = ".*\\.gz$", full.names = TRUE)
@@ -163,7 +163,7 @@ submit_mpileup(reference = reference, output = output, bamfiles = bamfiles)
 
 ```{r }
 
-vcfcmd      <- "bcftools view -r 'chr25' '/powerplant/workspace/hrtcdf/FSTs/malepool/malepoolparents/pileK97_03_05_07borCK06_01.bam' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
+vcfcmd      <- "bcftools view -r 'chr25' '/powerplant/workspace/hrtcdf/github/FSTs/malepool/malepoolparents/pileK97_03_05_07borCK06_01.bam' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
 
 DTRu2a_alts <- fread(cmd=vcfcmd, col.names = c('rSAMPLE','POS','rREF','rALT','rDP','rAD','rAD0','rAD1','rAD2','rAD3'), key = 'POS')
 
