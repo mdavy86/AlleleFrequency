@@ -1,0 +1,63 @@
+---
+title: "match malepools to parent pool"
+author: "Casey_Flay"
+date: "14/02/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+library(RLinuxModules)
+library(data.table)
+library(glue)
+library(here)
+library(tidyverse)
+library(stringr)
+library(ggplot2)
+library(magrittr)
+library(GenomicRanges)
+module("load openlava asub/2.2 bcftools/1.10.2 vcftools")
+```
+
+```{r male_pool_ofparents and A1}
+male_pool_ofparents<- fread("/powerplant/workspace/hrtcdf/github/FSTs/malepool/malepool_ofparents.csv")
+
+vcfcmd      <- "bcftools view '/powerplant/workspace/hrtcdf/github/FSTs/malepool/A1_chr25_pile.vcf.gz' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%ALT{0}\t%ALT{1}\t%ALT{2}\t%ALT{3}\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
+A1 <- fread(cmd=vcfcmd, col.names = c('SAMPLEa','POS','REFa','ALTa','ALT0a','ALT1a','ALT2a','ALT3a','DPa','ADa','AD0a','AD1a','AD2a','AD3a'), key = 'POS')
+pA1 <- merge.data.table(male_pool_ofparents, A1, all=TRUE, by ='POS')
+rm(male_pool_ofparents, A1)
+test_subset <- pA1[POS<1000000]
+fwrite(test_subset, file="test_subset.csv")
+rm(test_subset)
+```
+
+```{r }
+pA1 <- fread("test_subset.csv")
+sapply(pA1,class) #get data class
+pA1 <- pA1[!is.na(DPmp)][!is.na(SAMPLEa)]
+pA1 <- pA1[!DPmp<=4,][!REFa<=4]
+#clean up low depth snps
+pA1 <- pA1[AD0mp<=4,  `:=` (AD0mp=".", ALT0mp=".")
+          ][AD1mp<=4, `:=` (AD1mp=".", ALT1mp=".")
+          ][AD2mp<=4, `:=` (AD2mp=".", ALT2mp=".")
+          ][AD3mp<=4, `:=` (AD3mp=".", ALT3mp=".")
+          ][AD0a<=4,  `:=` (AD0a=".", ALT0a=".")
+          ][AD1a<=4,  `:=` (AD1a=".", ALT1a=".")
+          ][AD2a<=4,  `:=` (AD2a=".", ALT2a=".")
+          ][AD3a<=4,  `:=` (AD3a=".", ALT3a=".")]
+
+#replace ADrepeats in AD1... with "." where there is only reference alleles.
+pA1 <- pA1[, `:=` (AD0mp=as.character(AD0mp), AD1mp=as.character(AD1mp)) ]
+pA1 <- pA1[ADmp==AD0mp, `:=`(AD0mp=".", AD1mp=".", AD2mp=".", AD3mp=".")]
+
+pA1 <- pA1[, `:=` (AD0a=as.character(AD0a), AD1a=as.character(AD1a)) ]
+pA1 <- pA1[ADa==AD0a, `:=`(AD0a=".", AD1a=".", AD2a=".", AD3a=".")]
+pA1 <- pA1[is.na(AD1mp), AD1mp := "."][is.na(AD1a), AD1a := "."]
+
+```
+
+```{r }
+
+```
+
