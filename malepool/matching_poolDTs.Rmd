@@ -38,10 +38,13 @@ dat <- future({lapply(files, fread, col.names = c('mpSAMPLE','POS','mpREF','mpAL
 })
 dat
 ```
+
 ```{r run future.batchtools to reduce the time required to run the large files}
 files      <-  paste(testpooldt$path, "withhom", testpooldt$SAMPLE, "_chr25_pile.vcf.gz", sep = "")
 
-dat <- future({lapply(fread(cmd="bcftools view 'files' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%ALT{0}\t%ALT{1}\t%ALT{2}\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'",  col.names = c(paste0(testpooldt$SAMPLE,"SAMPLE"),'POS',paste0(testpooldt$SAMPLE,'REF'), paste0(testpooldt$SAMPLE,'ALT'), paste0(testpooldt$SAMPLE,'ALT0'), paste0(testpooldt$SAMPLE,'ALT1'), paste0(testpooldt$SAMPLE,'ALT2'),paste0(testpooldt$SAMPLE,'ALT3'), paste0(testpooldt$SAMPLE,'DP'),paste0(testpooldt$SAMPLE,'AD0'),paste0(testpooldt$SAMPLE,'AD1'), paste0(testpooldt$SAMPLE,'AD2'), key = 'POS')))
+command <- "bcftools view 'files' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%ALT{0}\t%ALT{1}\t%ALT{2}\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
+
+dat <- future({lapply(cmd=command, fread,  col.names = c(paste0(testpooldt$SAMPLE,"SAMPLE"),'POS',paste0(testpooldt$SAMPLE,'REF'), paste0(testpooldt$SAMPLE,'ALT'), paste0(testpooldt$SAMPLE,'ALT0'), paste0(testpooldt$SAMPLE,'ALT1'), paste0(testpooldt$SAMPLE,'ALT2'),paste0(testpooldt$SAMPLE,'ALT3'), paste0(testpooldt$SAMPLE,'DP'),paste0(testpooldt$SAMPLE,'AD0'),paste0(testpooldt$SAMPLE,'AD1'), paste0(testpooldt$SAMPLE,'AD2'), key = 'POS'))
   names(dat) <- testpooldt$SAMPLE
 })
 dat
