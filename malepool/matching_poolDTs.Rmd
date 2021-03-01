@@ -18,104 +18,112 @@ library(ggplot2)
 library(magrittr)
 library(future)
 library(future.batchtools)
-module("load openlava bwa/0.7.12 bcftools/1.10.2 vcftools")
+plan(batchtools_openlava, resources = list(threads=1))
+setDTthreads(1)
+module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 vcftools")
 ```
 *pull out russell alleles that are present at a position with a depth count in a 3:1 ratio/ 75%:25% if the alleles in rusell diverge from the 25% ratio in the male pools it should indicate selection on that allele. hopefully in the right spot on chr25.*
 *get the alleles that are alts in russell that are not alts in the female parent pools to reduce the numbers*
 
 ```{r update testpooldt}
 testpooldt <- data.table("SAMPLE"= c("A1", "B2", "C3", "E11", "F12", "G13", "H14", "I15", "J16"))
-testpooldt <- testpool[, `:=` (with="withhom", chr="_chr25_",  work="pile", vcf=".vcf.gz", filterquery="f", path="/powerplant/workspace/hrtcdf/github/FSTs/malepool/")]
+testpooldt <- testpooldt[, `:=` (with="withhom", chr="_chr25_",  work="pile", vcf=".vcf.gz", filterquery="f", path="/powerplant/workspace/hrtcdf/github/FSTs/malepool/")]
 testpooldt
 
 ```
 
-```{r run future.batchtools to reduce the time required to run the large files}
-files      <-  paste("withhom", testpooldt$SAMPLE, "_chr25_pile.vcf.gz", sep = "")
-
-dat <- future({lapply(files, fread, col.names = c('mpSAMPLE','POS','mpREF','mpALT','mpALT0','mpALT1','mpALT2','mpDP','mpAD0','mpAD1','mpAD2'), key = 'POS')
-  names(dat) <- testpooldt$SAMPLE
-})
-dat
-```
 
 ```{r run future.batchtools to reduce the time required to run the large files}
-files      <-  paste(testpooldt$path, "withhom", testpooldt$SAMPLE, "_chr25_pile.vcf.gz", sep = "")
-
-command <- "bcftools view 'files' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%ALT{0}\t%ALT{1}\t%ALT{2}\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
-
-dat <- future({lapply(cmd=command, fread,  col.names = c(paste0(testpooldt$SAMPLE,"SAMPLE"),'POS',paste0(testpooldt$SAMPLE,'REF'), paste0(testpooldt$SAMPLE,'ALT'), paste0(testpooldt$SAMPLE,'ALT0'), paste0(testpooldt$SAMPLE,'ALT1'), paste0(testpooldt$SAMPLE,'ALT2'),paste0(testpooldt$SAMPLE,'ALT3'), paste0(testpooldt$SAMPLE,'DP'),paste0(testpooldt$SAMPLE,'AD0'),paste0(testpooldt$SAMPLE,'AD1'), paste0(testpooldt$SAMPLE,'AD2'), key = 'POS'))
-  names(dat) <- testpooldt$SAMPLE
-})
-dat
+files      <-  paste(testpooldt$path, testpooldt$SAMPLE, "_chr25_pile.vcf.gz", sep = "")
+#files
+dat <- future_lapply(files, function(x) {
+  require(glue)
+  require(data.table)
+  warn(message = x)
+  cmd <- glue::glue("bcftools view {x} -Ou | bcftools query  -f'[[%SAMPLE]]\t%POS\t%REF\t%ALT\t%ALT{{0}}\t%ALT{{1}}\t%ALT{{2}}\t%DP\t%AD\t%AD{{0}}\t%AD{{1}}\t%AD{{2}}\t%AD{{3}}\n'")
+  warn(message = cmd)
+  data.table::fread(cmd=cmd)
+  })
+  #names(dat) <- testpooldt$SAMPLE
+getwd()
 ```
+##col.names = c(paste0(testpooldt$SAMPLE,"SAMPLE"),'POS',paste0(testpooldt$SAMPLE,'REF'), paste0(testpooldt$SAMPLE,'ALT'), paste0(testpooldt$SAMPLE,'ALT0'), paste0(testpooldt$SAMPLE,'ALT1'), paste0(testpooldt$SAMPLE,'ALT2'),paste0(testpooldt$SAMPLE,'ALT3'), paste0(testpooldt$SAMPLE,'DP'),paste0(testpooldt$SAMPLE,'AD0'),paste0(testpooldt$SAMPLE,'AD1'), paste0(testpooldt$SAMPLE,'AD2'), key = 'POS')
 
 ```{r male_pool_ofparents, A1, and Russell}
 #ALT{0} retrieves the first alternate allele while AD{0} retrieves the depth for the reference. col names adjusted to make ALT1 the same as AD1.
-male_pool_ofparents<- fread("/powerplant/workspace/hrtcdf/github/FSTs/malepool/malepool_ofparents.csv")
 
-vcfcmd      <- "bcftools view '/powerplant/workspace/hrtcdf/github/FSTs/malepool/A1_chr25_pile.vcf.gz' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%ALT{0}\t%ALT{1}\t%ALT{2}\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
-A1 <- fread(cmd=vcfcmd, col.names = c('SAMPLEa','POS','REFa','ALTa','ALT1a','ALT2a','ALT3a','DPa','ADa','REFDa','AD1a','AD2a','AD3a'), key = 'POS')
+#malepools
+testpooldt <- c("A1", "B2", "C3", "E11", "F12", "G13", "H14", "I15", "J16")
+if (file.exists("malepools.csv")){file.remove("malepools.csv")}
+for (i in testpooldt){
+vcfcmd      <- glue::glue("bcftools view '/powerplant/workspace/hrtcdf/github/FSTs/malepool/{i}_chr25_pile.vcf.gz' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%ALT{{0}}\t%ALT{{1}}\t%ALT{{2}}\t%DP\t%AD\t%AD{{0}}\t%AD{{1}}\t%AD{{2}}\t%AD{{3}}\n'")
+testpools   <- fread(cmd=vcfcmd, col.names = c('SAMPLE','POS','REF','ALT','ALT1','ALT2','ALT3','DP','AD','AD0','AD1','AD2','AD3'), key = 'POS')
 
-vcfcmd2      <- "bcftools view -r 'chr25' '/powerplant/workspace/hrtcdf/github/FSTs/Russellalt/Russellpile.vcf.gz' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%ALT{0}\t%ALT{1}\t%ALT{2}\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
-Ru <- fread(cmd=vcfcmd2, col.names = c('SAMPLEr','POS','REFr','ALTr','ALT1r','ALT2r','ALT3r','DPr','ADr','REFDr','AD1r','AD2r','AD3r'), key = 'POS')
-
-pA1 <- merge.data.table(male_pool_ofparents, A1, all=TRUE, by ='POS')
-pA1 <- merge.data.table(Ru, pA1, all=TRUE, by ='POS')
-rm(male_pool_ofparents, A1, Ru)
-test_subset <- pA1[POS<1000000]
-if (file.exists("test_subset.csv")){
-  file.remove("test_subset.csv")
+fwrite(testpools,file="malepools.csv", append=TRUE)
 }
+testpools   <- fread('/powerplant/workspace/hrtcdf/github/FSTs/malepool/malepools.csv')
+
+##parent pools for males
+vcfcmd1      <- "bcftools view '/powerplant/workspace/hrtcdf/github/FSTs/malepool/malepoolparents/pileCK06_01CK20_01CK51_06.vcf' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%ALT{0}\t%ALT{1}\t%ALT{2}\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
+male_pool_ofparents <- fread(cmd=vcfcmd1, col.names = c('SAMPLE','POS','REF','ALT','ALT1','ALT2','ALT3','DP','AD','REFD','AD1','AD2','AD3'), key = 'POS')
+male_pool_ofparents <- male_pool_ofparents[, SAMPLEmp := "mpparents"]
+
+#Russell and alt
+vcfcmd2      <- "bcftools view -r 'chr25' '/powerplant/workspace/hrtcdf/github/FSTs/Russellalt/Russellpile.vcf.gz' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%ALT{0}\t%ALT{1}\t%ALT{2}\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
+Ru <- fread(cmd=vcfcmd2, col.names = c('SAMPLE','POS','REF','ALT','ALT1','ALT2','ALT3','DP','AD','REFD','AD1','AD2','AD3'), key = 'POS')
+
+#bind pools and remove unneeded 
+testpools  <- rbind(testpools, male_pool_ofparents, Ru)
+rm(male_pool_ofparents, Ru)
+
+#pA1 <- merge.data.table(male_pool_ofparents, A1, all=TRUE, by ='POS')
+#pA1 <- merge.data.table(Ru, pA1, all=TRUE, by ='POS')
+rm(male_pool_ofparents, A1, Ru)
+test_subset <- testpools[POS<10000]
+if (file.exists("test_subset.csv")){  file.remove("test_subset.csv")}
 fwrite(test_subset, file="test_subset.csv")
 #rm(test_subset)
 ##full set
-if (file.exists("pA1.csv")){
-  file.remove("pA1.csv")
-}
-fwrite(pA1, file="pA1.csv")
+if (file.exists("testpools.csv")){  file.remove("testpools.csv")}
+fwrite(pA1, file="testpools.csv")
 ```
 
 ```{r pull out russell alleles that are present at a position with a depth count in a 3:1 ratio/ 75%:25% }
 # if the alleles in rusell diverge from the 25% ratio d in the male pools it should indicate selection on that allele. hopefully in the right spot on chr25.
-
+head(testpools)
 ```
 
 
 ```{r cleanup data tables}
-####pA1 <- fread("test_subset.csv")
-pA1 <- fread("test_subset.csv")
+####testpools <- fread("test_subset.csv")
+testpools <- fread("test_subset.csv")
 #remove sites not in male parents and pool A1 
-pA1 <- pA1[!is.na(DPmp)][!is.na(SAMPLEa)][!is.na(SAMPLEr)]
+testpools <- testpools[!is.na(DP)]
 
-#sapply(pA1,class) #get data class change class to numeric for depth
+head(testpools)
+#sapply(testpools,class) #get data class change class to numeric for depth
 pA1 <- pA1[, `:=` (AD1a=as.numeric(AD1a), AD2a=as.numeric(AD2a), AD3a=as.numeric(AD3a), AD1mp=as.numeric(AD1mp), AD2mp=as.numeric(AD2mp), AD3mp=as.numeric(AD3mp), AD1r=as.numeric(AD1r), AD2r=as.numeric(AD2r), AD3r=as.numeric(AD3r))]
 
 #clean up low depth snps
-pA1 <- pA1 [AD1a<5,  `:=` (AD1a=".", ALT1a=".")
-          ][AD2a<5,  `:=` (AD2a=".", ALT2a=".")
-          ][AD3a<5,  `:=` (AD3a=".", ALT3a=".")
-          ][AD1r<5,  `:=` (AD1r=".", ALT1r=".")
-          ][AD2r<5,  `:=` (AD2r=".", ALT2r=".")
-          ][AD3r<5,  `:=` (AD3r=".", ALT3r=".")]
+testpools <- testpools [AD1<5,  `:=` (AD1=".", ALT1=".")
+                      ][AD2<5,  `:=` (AD2=".", ALT2=".")
+                      ][AD3<5,  `:=` (AD3=".", ALT3=".")]
 
-pA1 <- pA1[!REFDa<5 & !AD1a<5][!REFDmp<5 & !AD1mp<5][!REFDr<5 & !AD1r<5] #clean low depth samples as they may give false positives. This could be increased for better accuracy.
+#clean low depth samples as they may give false positives. This could be increased for better accuracy.
+testpools <- testpools[!AD0<5 & !AD1<5] 
 
-#sapply(pA1,class) #get data class
 #replace ADrepeats in AD1... with "." where there is only reference alleles.
-pA1 <- pA1[ADa==REFDa, `:=`(AD1a=".", AD2a=".", AD3a=".")]
-pA1 <- pA1[ADmp==REFDmp, `:=`(AD1mp=".", AD2mp=".", AD3mp=".")]
-pA1 <- pA1[ADr==REFDr, `:=`(AD1r=".", AD2r=".", AD3r=".")]
-#pA1 <- pA1[is.na(AD1mp), AD1mp := "."][is.na(AD1a), AD1a := "."]
+testpools <- testpools[AD==AD0, `:=`(AD1=".", AD2=".", AD3=".")]
+#sapply(testpools,class) #get data class
+
+#testpools <- testpools[is.na(AD1mp), AD1mp := "."][is.na(AD1a), AD1a := "."]
 ```
 
-
+**up to here**
 ```{r note snps which are not the same between Russell and the male parent pool of females mp and calculate which ones are 25% of depth.}
-#remove some columns
-pA1t    <-       pA1[, `:=` (ALT2r=NULL, ALT3r=NULL,AD2r=NULL, AD3r=NULL)]
 
 #note snps which are not the same between Russell and the male parent pool of females mp and calculate their AF.
-pA1t    <-       pA1[ALT1r != ALTmp & ALT1r != ALT1mp & ALT1r != ALT2mp & ALT1r != ALT3mp, `:=` ("AD1r_DPr"=(AD1r/DPr))]
+testpools    <-       testpools[ALT1r != ALTmp & ALT1r != ALT1mp & ALT1r != ALT2mp & ALT1r != ALT3mp, `:=` ("AD1r_DPr"=(AD1r/DPr))]
 
 #make a new column for those that are 25% of russell alleles
 pA1t    <- pA1[, `:=` ("AD1r_DPr25"=AD1r_DPr>0.23 & AD1r_DPr<0.27)]
