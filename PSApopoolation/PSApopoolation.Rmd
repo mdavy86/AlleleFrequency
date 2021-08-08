@@ -14,30 +14,67 @@ library(RLinuxModules)
 library(glue)
 library(tidyverse)
 library(here)
-plan(batchtools_openlava, resources = list(threads=1))
+library(data.table)
 setDTthreads(1)
 module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 popoolation2 perlbrew/0.76")#old samtools module loaded for popoolation2
-setwd("/powerplant/workspace/hrtcdf/github/FSTs/PSApopoolation")
 here()
 ```
 
-```{r run samtools mpileup for indexed reference mpilechr25 using samtools/0.1.18.}
+```{r bamfiles made in PSApopoolationfiles.Rmd}
+malepools  <- as.data.table(grep(paste("HW5YYDSXX*"), list.files(path="."), invert=FALSE, value=TRUE))
+malepools  <- malepools[, V2 := str_replace_all(V1, ".bai" , "&.bai")             
+                       ][, c("V1", "ftype") := tstrsplit(V2, "&", fixed=TRUE)
+                       ][is.na(ftype), .(V1)]
+mrgdlowPSA         <- as.data.table(grep(paste("*mrgdlowPSA.bam$"), list.files(path="."), invert=FALSE, value=TRUE))
+merged_parent_bams <- as.data.table(grep(paste("*mrgdparents.bam$"), list.files(path="."), invert=FALSE, value=TRUE))
+
+rus_x10 <- as.data.table(paste(list('Russell_mrgdparentsA1.bam', 'Russell_mrgdparentsB2.bam', 'Russell_mrgdparentsC3.bam', 'Russell_mrgdparentsD6.bam', 'Russell_mrgdparentsE11.bam', 'Russell_mrgdparentsF12.bam', 'Russell_mrgdparentsG13.bam', 'Russell_mrgdparentsH14.bam', 'Russell_mrgdparentsI15.bam', 'Russell_mrgdparentsJ16.bam')))
+
+abfiles        <- rbindlist(list(malepools,mrgdlowPSA,merged_parent_bams,rus_x10))
+
+abfiles <- abfiles[, V2 := str_replace_all(V1, ".bam" , "&.bam")
+                 ][, V2 := str_replace_all(V2, "HW5YYDSXX_" , "	HW5YYDSXX_&")
+                 ][, V2 := str_replace_all(V2, "_mrgdlowPSA" , "&_mrgdlowPSA")
+                 ][, V2 := str_replace_all(V2, "_mrgdparents" , "&_mrgdparents&")
+                 ][, V2 := str_replace_all(V2, "_L00" , "&_L00")                   
+                 ][, c("V3", "x2", "x3", "x4") := tstrsplit(V2, "&", fixed=TRUE)]
+abfiles <- abfiles[V3=="Russell", V1 := "Russell_mrgdparents.bam"]
+  
+abfiles <-  abfiles[x2=="A1" | x3=="A1", "malepercentage" := "A1m90"
+                  ][x2=="B2" | x3=="B2", "malepercentage" := "B2m75" 
+                  ][x2=="C3" | x3=="C3", "malepercentage" := "C3m60"                    
+                  ][x2=="D6" | x3=="D6", "malepercentage" := "D6m44"                    
+                  ][x2=="E11" | x3=="E11", "malepercentage" := "E11m80"                    
+                  ][x2=="F12" | x3=="F12", "malepercentage" := "F12m50"                    
+                  ][x2=="G13" | x3=="G13", "malepercentage" := "G13m45"
+                  ][x2=="H14" | x3=="H14", "malepercentage" := "H14m68"  
+                  ][x2=="I15" | x3=="I15", "malepercentage" := "I15m21"                    
+                  ][x2=="J16" | x3=="J16", "malepercentage" := "J16m11"]
+
+mps <-     unique(abfiles[,na.omit(malepercentage)])
+
+```
+
+```{r pools for mpileup using samtools/0.1.18. which will be run through mpileup2sync.jar}
 module("unload samtools")
 module ("load samtools/0.1.18")
+
+for (i in mps){
 submit_mpileup <- function(reference = "*.fa.gz", output = c(), bamfiles = c(), job.init = "asub", job.opts = "-q normal") {
-  cmd          <- "samtools mpileup -r 'chr25' -f {reference} {bamfiles} > {out}" 
+  cmd          <- "samtools mpileup -B -r 'chr25' -f {reference} {bamfiles} > {out}" 
   tmpf         <- tempfile(pattern = "submit_mileup.", fileext = ".sh")
   writeLines(text = c(glue(cmd)), con = tmpf)
   submit       <- "{job.init} {job.opts} {tmpf}"
   system(glue(submit), intern = TRUE)
 }
 
-bamfiles    <- paste(mpilepoolbams$V1)
+bamfiles <- abfiles[malepercentage=={i}, V1]
 file.exists(bamfiles)
-out         <- paste(mpilepoolbams$sample, "sampile_chr25.vcf", sep = "_")
+out         <- glue("{i}_mp_ru_sampile_chr25.vcf")
 reference   <- dir("/workspace/hrards/projects/hrtcdf/genome/fasta", pattern = ".*\\.gz$", full.names = TRUE)
-file.exists(reference)
+#file.exists(reference)
 #submit_mpileup(reference = reference, output = out, bamfiles = bamfiles)
+}
 ```
 
 ```{r files dt}
@@ -47,31 +84,21 @@ pofiles <- pofiles[, V2 := str_replace_all(V2, "_chr25.vcf" , "&_chr25.vcf")]
 pofiles <- pofiles[, V2 := str_replace_all(V2, "sampile_parents_" , "sampile_parents_&")
                  ][, c("V3", "V4", "V5") := tstrsplit(V2, "&", fixed=TRUE)
                  ][, V2:=NULL]
-pofiles <- pofiles[V3=="A1", "malepercentage" := "m90"
-                  ][V3=="B2", "malepercentage" := "m75" 
-                  ][V3=="C3", "malepercentage" := "m60"                    
-                  ][V3=="D6", "malepercentage" := "m44"                    
-                  ][V3=="E11", "malepercentage" := "m80"                    
-                  ][V3=="F12", "malepercentage" := "m50"                    
-                  ][V3=="G13", "malepercentage" := "m45"
-                  ][V3=="H14", "malepercentage" := "m68"  
-                  ][V3=="I15", "malepercentage" := "m21"                    
-                  ][V3=="J16", "malepercentage" := "m11"]
 pofiles <- pofiles[, "sync" := ".sync"]# for next step
 ```
 
-```{r make sync files with mpileup2sync}
-parents     <- pofiles[V4=="Russell", V1]
-m           <- pofiles[!is.na(malepercentage), V1]
-mp <- append(parents, m)
+```{r rest make sync files with mpileup2sync}
+mp <- grep(".vcf$", list.files(path="."), invert=FALSE, value=TRUE)
 
-#file.exists(mp)
-
-cmd          <- glue::glue("java -ea -Xmx16g -jar  /software/bioinformatics/popoolation2-1201/mpileup2sync.jar --input {mp} --output {mp}.sync --fastq-type sanger --min-qual 20 --threads 8")
-outer        <- "a14";  logD<- here("logD");  bsO<- file.path(logD, paste0(outer,".out")); bsE<- file.path(logD, paste0(outer,".err"))
+file.exists(mp)
+for (i in mp){
+cmd          <- glue::glue("java -ea -Xmx16g -jar  /software/bioinformatics/popoolation2-1201/mpileup2sync.jar --input {i} --output {i}.sync --fastq-type sanger --min-qual 20 --threads 8")
+outer        <- "a15";  logD<- here("logD");  bsO<- file.path(logD, paste0(outer,".out")); bsE<- file.path(logD, paste0(outer,".err"))
 bsub_cmd     <- glue("bsub -n 8 -o {bsO} -e {bsE} {cmd}")
 system(bsub_cmd)
+}
 ```
+
 
 
 ```{r run CMH test - not running yet as i dont know what to insert into input if pools are compared in population}
@@ -85,13 +112,15 @@ system(bsub_cmd)
 ```
 
 ```{r}
-m     <- pofiles[, V1]
-perl <popoolation2-path>/ --input p1_p2.sync --output-prefix p1_p2 --min-count 6 --min-coverage 50 --max-coverage 200
+mpsync     <- paste0(mp, ".sync")
+file.exists(mpsync)
 
-cmd          <- glue::glue("perl /software/bioinformatics/popoolation2-1201/snp-frequency-diff.pl --input {m}.sync --output-prefix p1_p2 --min-count 6 --min-coverage 50 --max-coverage 200")
-outer        <- "atest";  logD<- here("logD");  bsO<- file.path(logD, paste0(outer,".out")); bsE<- file.path(logD, paste0(outer,".err"))
+for (i in mpsync){
+cmd          <- glue::glue("perl /software/bioinformatics/popoolation2-1201/snp-frequency-diff.pl --input {i} --output-prefix {i}snp_fd --min-count 6 --min-coverage 50 --max-coverage 200")
+outer        <- "a16";  logD<- here("logD");  bsO<- file.path(logD, paste0(outer,".out")); bsE<- file.path(logD, paste0(outer,".err"))
 bsub_cmd     <- glue("bsub -n 8 -o {bsO} -e {bsE} {cmd}")
 system(bsub_cmd)
+}
 ```
 
 ```{r harsh resample of sync files - mainly needed once subsampling from all chromosomes}
