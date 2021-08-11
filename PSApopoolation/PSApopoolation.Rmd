@@ -72,8 +72,8 @@ bamfiles <- abfiles[malepercentage=={i}, V1]
 file.exists(bamfiles)
 out         <- glue("{i}_mp_ru_sampile_chr25.vcf")
 reference   <- dir("/workspace/hrards/projects/hrtcdf/genome/fasta", pattern = ".*\\.gz$", full.names = TRUE)
-#file.exists(reference)
-#submit_mpileup(reference = reference, output = out, bamfiles = bamfiles)
+file.exists(reference)
+submit_mpileup(reference = reference, output = out, bamfiles = bamfiles)
 }
 ```
 
@@ -88,8 +88,8 @@ pofiles <- pofiles[, "sync" := ".sync"]# for next step
 ```
 
 ```{r rest make sync files with mpileup2sync}
-mp <- grep(".vcf$", list.files(path="."), invert=FALSE, value=TRUE)
-
+mp <- grep("mp_ru_sampile_chr25.vcf$", list.files(path="."), invert=FALSE, value=TRUE)
+mp
 file.exists(mp)
 for (i in mp){
 cmd          <- glue::glue("java -ea -Xmx16g -jar  /software/bioinformatics/popoolation2-1201/mpileup2sync.jar --input {i} --output {i}.sync --fastq-type sanger --min-qual 20 --threads 8")
@@ -124,7 +124,8 @@ system(bsub_cmd)
 ```
 
 ```{r harsh resample of sync files - mainly needed once subsampling from all chromosomes}
-bamin        <- paste(pofiles$V1, pofiles$sync, sep="")
+bamin <- grep("mp_ru_sampile_chr25.vcf.sync$", list.files(path="."), invert=FALSE, value=TRUE)
+
 file.exists(bamin)
 for (i in bamin){
 cmd          <- glue::glue("perl /software/bioinformatics/popoolation2-1201/subsample-synchronized.pl --input {i} --output {i}rs --target-coverage 20 --max-coverage 250 --method withreplace")
