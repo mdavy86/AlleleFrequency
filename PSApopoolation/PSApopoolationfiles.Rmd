@@ -23,12 +23,14 @@ library(future.batchtools)
 library(here)
 plan(batchtools_openlava, resources = list(threads=1))
 setDTthreads(1)
-module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 popoolation2 perlbrew/0.76")#old samtools module loaded for popoolation2
-setwd("/powerplant/workspace/hrtcdf/github/FSTs/PSApopoolation")
+module("load openlava asub/2.2 bwa/0.7.12 samtools/0.1.18 bcftools/0.1.18 popoolation2 perlbrew/0.76")#old samtools module loaded for popoolation2
 here()
 ```
 
-**parent files pulled from database, merged with picard and piled with bcftools since samtools/0.1.18 keeps having issues with read groups**
+**samtools/0.1.18 keeps having issues with read groups so i havn't got this script to work**
+**samtools/0.1.18 keeps having issues with read groups so i havn't got this script to work**
+**samtools/0.1.18 keeps having issues with read groups so i havn't got this script to work**
+## file paths may be a bit off from trying variables also.
 ```{r parents NCBI aligned bamfiles from male pool and testpools}
 Rualn_bamDir <- "/output/genomic/plant/Actinidia/chinensis/Resequencing/Alignments/Russell_V2a.chromosomes.and.unassigned"
 Rualn_bams  <- as.data.table(grep(paste('.bam$', collapse = "|"), list.files(path=Rualn_bamDir), invert=FALSE, value=TRUE))
@@ -90,9 +92,7 @@ system(bsub_cmd)
 }
 ```
 
-```{r  merge vcfs into parent pools- dont use samtools merge}
-module("unload samtools")
-module ("load samtools/1.9")
+```{r}
 
 for (i in unique(parent_bams$pool_parent)){ 
 x     <- parent_bams[pool_parent=={i}, pbams]
@@ -109,36 +109,18 @@ system(bsub_cmd)
 }
 ```
 
-```{r merge bams into parent pools}
-for (i in unique(parent_bams$pool_parent)){ 
-x       <- parent_bams[pool_parent=={i}, pbams]
-infile  <- str_c(paste("I=", x, sep=""), sep="", collapse=" ")
-outfile <- paste({i}, "_mrgdparents.bam", sep="")
+```{r sort}
+parent_bams <- parent_bams[, `:=` ("mrgedparents"= paste0(parent_bams$pool_parent, "_mrgdparents.bam", sep=""))]
+bamin          <- parent_bams[, mrgedparents]
 
-file.exists(x)
-vcfcmd         <- glue("java -jar /software/bioinformatics/picard-tools-2.9.4/picard.jar MergeSamFiles {infile} O={outfile}")
-OutEr          <- "picardmrg1"; logD<-here("logD"); bsO<-file.path(logD,paste0(OutEr,".out")); bsE<-file.path(logD,paste0(OutEr,".err"))
-bsub_cmd       <- glue("bsub -n 8 -o {bsO} -e {bsE} {vcfcmd}")
+file.exists(bamin)
+for (i in bamin){
+vcf_cmd        <- glue::glue("samtools sort -o s_{i} {i}")
+OutEr          <- "index131";  logD< here("logD");  bsO<-file.path(logD,paste0(OutEr,".out")); bsE<-file.path(logD,paste0(OutEr,".err"))
+bsub_cmd       <- glue("bsub -n 8 -o {bsO} -e {bsE} {vcf_cmd}")
 system(bsub_cmd)
 }
 ```
-
-```{r picard AddOrReplaceReadGroups replace read groups- probably not needed as RG retained by pickard merge.}
-merged_parent_bams <- unique(parent_bams, by = c("pool_parent"))
-merged_parent_bams <- merged_parent_bams[, `:=` ("mrgedparents"= paste0(merged_parent_bams$pool_parent, "_mrgdparents.bam", sep=""))]
-x <- merged_parent_bams[, mrgedparents]
-
-for (i in x){ 
-f <- file_path_sans_ext({i})
-file.exists(i)
-
-vcfcmd  <- glue("java -jar /software/bioinformatics/picard-tools-2.9.4/picard.jar AddOrReplaceReadGroups I= {i} O= {f}_rg.bam RGID=null RGLB=null RGPL=SANGER RGPU=null RGSM={f}")
-OutEr          <- "picardrg3"; logD<-here("logD"); bsO<-file.path(logD,paste0(OutEr,".out")); bsE<-file.path(logD,paste0(OutEr,".err"))
-bsub_cmd       <- glue("bsub -n 8 -o {bsO} -e {bsE} {vcfcmd}")
-system(bsub_cmd)
-}
-```
-
 ```{r index}
 parent_bams <- parent_bams[, `:=` ("mrgedparents"= paste0(parent_bams$pool_parent, "_mrgdparents.bam", sep=""))]
 #parent_bams <- parent_bams[, `:=` ("mrgedparents_rg"= paste0(parent_bams$pool_parent, "_mrgdparents_rg.bam", sep=""))]
@@ -154,8 +136,6 @@ system(bsub_cmd)
 ```
 ##havent run this chunk as the male test needs to be run first.
 ```{r run samtools mpileup for chr25 using samtools/0.1.18. since popoolation2 requires that version }
-module("unload samtools")
-module ("load samtools/0.1.18")
 
 submit_mpileup <- function(reference = "*.fa.gz", output = c(), bamfiles = c(), job.init = "asub", job.opts = "-q normal") {
   cmd          <- "samtools mpileup -r 'chr25' -f {reference} {bamfiles} > {out}" 
@@ -173,28 +153,6 @@ out         <- paste("sampile_parents", PedigreeItem, "chr25.vcf", sep = "_")
 reference   <- dir("/workspace/hrards/projects/hrtcdf/genome/fasta", pattern = ".*\\.gz$", full.names = TRUE)
 #file.exists(reference)
 submit_mpileup(reference = reference, output = out, bamfiles = bamfiles)
-```
-
-```{r run bcftools mpileup for chr25 for QTLseqR}
-submit_mpileup <- function(reference = "*.fa.gz", output = c(), bamfiles = c(), job.init = "asub", job.opts = "-q normal") {
-  cmd          <- "bcftools mpileup -B -I -Q 20 -f {reference} --excl-flags 'UNMAP,SECONDARY,QCFAIL,DUP'  -r 'chr25' -a {mpileuptags} {bamfiles} -Ou | bcftools call -f {bcfcalltags} -p {pvalThres} -m -A -Oz -o {output} && bcftools index {output} && bcftools +fill-tags {output} -Oz -o {filltagsoutput} -t {filltag}" 
-  tmpf         <- tempfile(pattern = "submit_mileup.", fileext = ".sh")
-  writeLines(text = c(glue(cmd)), con = tmpf)
-  submit       <- "{job.init} {job.opts} {tmpf}"
-  system(glue(submit), intern = TRUE)
-}
-filltag        <- "INFO/AF,INFO/AC,INFO/AN,INFO/TYPE,INFO/AC_Het"
-mpileuptags    <- "DP,AD,SP,INFO/AD"
-bcfcalltags    <- "GQ,GP"
-pvalThres      <- 0.99
-PedigreeItem   <- unique(parent_bams[, pool_parent])
-bamfiles       <- unique(parent_bams[, mrgedparents])
-filltagsoutput <- paste("bcfmpile_parents", PedigreeItem, "ft_chr25.vcf", sep = "_")
-output         <- paste("bcfmpile_parents", PedigreeItem, "chr25.vcf", sep = "_")
-reference      <- dir("/workspace/hrards/projects/hrtcdf/genome/fasta", pattern = ".*\\.gz$", full.names = TRUE)
-file.exists(bamfiles)
-file.exists(reference)
-submit_mpileup(reference = reference, output = output, bamfiles = bamfiles)
 ```
 
 ***male pools from hrtcdf/github/FSTs/malepool/malepool.Rmd***
@@ -252,24 +210,7 @@ system(bsub_cmd)
 }
 ```
 
-```{r picard merge lanes for sample lowPSA bam files}
-for (i in unique(pooldt_bam$sample)){ 
-x       <- pooldt_bam[sample=={i} & ftype==".bam", V1]
-infile  <- str_c(paste("I=", x, sep=""), sep="", collapse=" ")
-outfile <- paste({i}, "_picmrg_lowPSA.bam", sep="")
-
-file.exists(x)
-vcfcmd         <- glue("java -jar /software/bioinformatics/picard-tools-2.9.4/picard.jar MergeSamFiles {infile} O={outfile}")
-OutEr          <- "picardmrg2"; logD<-here("logD"); bsO<-file.path(logD,paste0(OutEr,".out")); bsE<-file.path(logD,paste0(OutEr,".err"))
-bsub_cmd       <- glue("bsub -n 8 -o {bsO} -e {bsE} {vcfcmd}")
-system(bsub_cmd)
-}
-```
-
 ```{r merge lanes for sample lowPSA bam files not used as samtools merge does not save readgroups}
-module("unload samtools")
-module ("load samtools/1.9")
-
 for (i in unique(pooldt_bam$sample)){ 
 x <- pooldt_bam[sample=={i} & ftype==".bam", V1]
 xt <- paste0(x, sep = "")
@@ -284,28 +225,26 @@ bsub_cmd  <- glue("bsub -n 8 -o {bsO} -e {bsE} {cmd}")
 ```
 
 
-
 ```{r}
-picmrg_lowPSApooldt_bam <- as.data.table(paste0(unique(pooldt_bam$sample), "_picmrg_lowPSA.bam"))
-picmrg_lowPSApooldt_bam <- picmrg_lowPSApooldt_bam[, `:=` (sample= str_replace_all(V1, "_picmrg_lowPSA.bam", ""), "ftype"=".bam")]
-#lowPSApooldt_bam <- as.data.table(paste0(unique(pooldt_bam$sample), "_mrgdlowPSA.bam"))
-#lowPSApooldt_bam <- lowPSApooldt_bam[, sample := str_replace_all(V1, "_mrgdlowPSA.bam", "")]
+lowPSApooldt_bam <- as.data.table(paste0(unique(pooldt_bam$sample), "_mrgdlowPSA.bam"))
+lowPSApooldt_bam <- lowPSApooldt_bam[, sample := str_replace_all(V1, "_mrgdlowPSA.bam", "")]
 variablemale     <- pooldt_bam[pooltype=="variablemale", .(V1, sample, ftype)]
 mpilepoolbams    <- rbind(picmrg_lowPSApooldt_bam, variablemale)
 ```
 
-```{r index}
+```{r sort}
 bamin     <- mpilepoolbams[ftype==".bam",V1]
 for (i in bamin){
-cmd       <- glue::glue("samtools index {i}")
-Ox        <- "i298";Ol<-paste0(paste0(here(),"/logD/"),paste0(Ox,".out"));Oe<-paste0(paste0(here(),"/logD/"),paste0(Ox,".err"))
+cmd       <- glue::glue("samtools sort -o s_{i} {i}")
+Log       <- "si298";Ol<-paste0(here('PSApopoolation/logD/'),Log,".out");Oe<-paste0(here('PSApopoolation/logD/'),Log,".err")
 bsub_cmd  <- glue("bsub -n 8 -o {Ol} -e {Oe} {cmd}")
 system(bsub_cmd)
 }
 ```
-```{incompatable r pools for bcftools mpileup using samtools/0.1.18. which will be run through mpileup2sync.jar- incompatable}
+```{r incompatable  pools for bcftools mpileup using samtools/0.1.18. which will be run through mpileup2sync.jar- incompatable}
 module("unload samtools")
-module ("load samtools/0.1.18")
+module("load samtools/0.1.18")
+mpilepoolbams  <- mpilepoolbams[ftype==".bam", `:=` ("sorted" = "s_")]
 
 for (i in mps){
 submit_mpileup <- function(reference = "*.fa.gz", output = c(), bamfiles = c(), job.init = "asub", job.opts = "-q normal") {
@@ -316,50 +255,27 @@ submit_mpileup <- function(reference = "*.fa.gz", output = c(), bamfiles = c(), 
   system(glue(submit), intern = TRUE)
 }
 
-bamfiles    <- mpilepoolbams[ftype==".bam",V1]
+bamfiles    <- mpilepoolbams[ftype==".bam", paste0(sorted, V1)]
 file.exists(bamfiles)
 out         <- glue("{i}_mp_ru_sampile_chr25.vcf")
 reference   <- dir("/workspace/hrards/projects/hrtcdf/genome/fasta", pattern = ".*\\.gz$", full.names = TRUE)
 file.exists(reference)
-submit_mpileup(reference = reference, output = out, bamfiles = bamfiles)
+#submit_mpileup(reference = reference, output = out, bamfiles = bamfiles)
 }
 ```
-#&& bcftools +fill-tags {output} -Oz -o {filltagsoutput} -t {filltag} && bcftools index -f {filltagsoutput}
-```{r run bcftools mpileup for chr25 for QTLseqR}
-submit_mpileup <- function(reference = "*.fa.gz", output = c(), bamfiles = c(), job.init = "asub", job.opts = "-q normal") {
-  cmd          <- "bcftools mpileup -B -I -Q 20 -f {reference} --excl-flags 'UNMAP,SECONDARY,QCFAIL,DUP'  -r 'chr25' -a {mpileuptags} {bamfiles} -Ou | bcftools call -f {bcfcalltags} -p {pvalThres} -m -A -Oz -o {output} && bcftools index -f {output}" 
-  tmpf         <- tempfile(pattern = "submit_mileup.", fileext = ".sh")
-  writeLines(text = c(glue(cmd)), con = tmpf)
-  submit       <- "{job.init} {job.opts} {tmpf}"
-  system(glue(submit), intern = TRUE)
-}
-filltag        <- "INFO/AF,INFO/AC,INFO/AN,INFO/TYPE,INFO/AC_Het"
-mpileuptags    <- "DP,AD,SP,INFO/AD"
-bcfcalltags    <- "GQ,GP"
-pvalThres      <- 0.99
-PedigreeItem   <- picmrg_lowPSApooldt_bam[ftype==".bam",sample]
-bamfiles       <- picmrg_lowPSApooldt_bam[ftype==".bam",V1]
-filltagsoutput <- paste("bcfmpile_samples", PedigreeItem, "ft_chr25.vcf", sep = "_")
-output         <- paste("bcfmpile_samples", PedigreeItem, "chr25.vcf", sep = "_")
-reference      <- dir("/workspace/hrards/projects/hrtcdf/genome/fasta", pattern = ".*\\.gz$", full.names = TRUE)
-file.exists(bamfiles)
-file.exists(reference)
-submit_mpileup(reference = reference, output = output, bamfiles = bamfiles)
-```
-***run samtools mpileup for each pool using samtools/0.1.18. in "PSApopoolation.Rmd" since popoolation2 requires samtools/0.1.18 run mpileup to make files which contain reads from both pools to be analysed.***
-```{r to get filltags to go complete this.}
-#vcfin         <- paste("bcfmpile_samples", PedigreeItem, "chr25.vcf", sep = "_")
-#for (i in vcfin){
-#vcfin          <- paste("bcfmpile_samples", PedigreeItem, "chr25.vcf", sep = "_")
-filltagsoutput <- paste("bcfmpile_samples", PedigreeItem, "ft_chr25.vcf", sep = "_")
-filltag        <- "AF,AC,AN,HWE,MAF"
-cmd       <- glue::glue("bcftools +fill-tags 'bcfmpile_samples_D6_ft_chr25.vcf' -Ob -o 'filltagstest' -t {filltag}")
-#cmd       <- glue::glue("bcftools +fill-tags {vcfin} -Oz -o {filltagsoutput} -t {filltag}")
-Oi        <- "ft351";Ol<-paste0(paste0(here(),"/logD/"),paste0(Oi,".out"));Oe<-paste0(paste0(here(),"/logD/"),paste0(Oi,".err"))
+
+```{r samtools/0.1.18index}
+bamin     <- mpilepoolbams[ftype==".bam",V1]
+for (i in bamin){
+cmd       <- glue::glue("samtools index -o s_{i} {i}")
+Log       <- "si298";Ol<-paste0(here('PSApopoolation/logD/'),Log,".out");Oe<-paste0(here('PSApopoolation/logD/'),Log,".err")
 bsub_cmd  <- glue("bsub -n 8 -o {Ol} -e {Oe} {cmd}")
 system(bsub_cmd)
-#}
+}
 ```
+
+
+***run samtools mpileup for each pool using samtools/0.1.18. in "PSApopoolation.Rmd" since popoolation2 requires samtools/0.1.18 run mpileup to make files which contain reads from both pools to be analysed.***
 
 ```{r remove unneeded files}
 r1     <- paste0(merged_parent_bams$mrgedparents)
