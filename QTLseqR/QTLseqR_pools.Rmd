@@ -96,10 +96,10 @@ copy_my_contents_for_below#copy cmd script and paste below. it works....
 mp<-mp [,'aSNPi':=aAD1/aDP][,'bSNPi':=bAD1/bDP][,'cSNPi':=cAD1/cDP][,'dSNPi':=dAD1/dDP][,'eSNPi':=eAD1/eDP][,'fSNPi':=fAD1/fDP][,'gSNPi':=gAD1/gDP][,'hSNPi':=hAD1/hDP][,'iSNPi':=iAD1/iDP][,'jSNPi':=jAD1/jDP][,'rSNPi':=rAD1/rDP]
 
 #Reference allele frequency = Ref allele depth HighBulk + Ref allele depth LowBulk divided by the Total read depth for both bulks
-#in this case       REF_FRQ = ref allele depth Russell + Ref allele depth xMalePool/  DPrussell + DPxMalePool
+#in this case       REF_FRQ = ref allele depth Russell + Ref allele depth aMalePool/  DPrussell + DPxMalePool
 for (i in pools){RAFcopy_my_contents_for_below <- paste("mp<-mp",paste(glue("[,'{i}REF_FRQ':=(rAD0+{i}AD0)/(rDP+{i}DP)]"), collapse = ""))}
 RAFcopy_my_contents_for_below#copy script and paste below.
-mp<-mp [,'aREF_FRQ':=(rAD0+aAD0)/(rDP+aDP)][,'bREF_FRQ':=(rAD0+bAD0)/(rDP+bDP)][,'cREF_FRQ':=(rAD0+cAD0)/(rDP+cDP)][,'dREF_FRQ':=(rAD0+dAD0)/(rDP+dDP)][,'eREF_FRQ':=(rAD0+eAD0)/(rDP+eDP)][,'fREF_FRQ':=(rAD0+fAD0)/(rDP+fDP)][,'gREF_FRQ':=(rAD0+gAD0)/(rDP+gDP)][,'hREF_FRQ':=(rAD0+hAD0)/(rDP+hDP)][,'iREF_FRQ':=(rAD0+iAD0)/(rDP+iDP)][,'jREF_FRQ':=(rAD0+jAD0)/(rDP+jDP)][,'rREF_FRQ':=(rAD0+rAD0)/(rDP+rDP)]
+mp<-mp [,'aREF_FRQ':=((rAD0+aAD0)/(rDP+aDP))][,'bREF_FRQ':=((rAD0+bAD0)/(rDP+bDP))][,'cREF_FRQ':=((rAD0+cAD0)/(rDP+cDP))][,'dREF_FRQ':=((rAD0+dAD0)/(rDP+dDP))][,'eREF_FRQ':=((rAD0+eAD0)/(rDP+eDP))][,'fREF_FRQ':=((rAD0+fAD0)/(rDP+fDP))][,'gREF_FRQ':=((rAD0+gAD0)/(rDP+gDP))][,'hREF_FRQ':=((rAD0+hAD0)/(rDP+hDP))][,'iREF_FRQ':=((rAD0+iAD0)/(rDP+iDP))][,'jREF_FRQ':=((rAD0+jAD0)/(rDP+jDP))][,'rREF_FRQ':=((rAD0+rAD0)/(rDP+rDP))]
 
 #delta(SNP-index) = SNP-indexHighBulk − SNP-indexLowBulk
 for (i in pools){deltaSNPcopy_my_contents_for_below <- paste("mp<-mp",paste(glue("[,'{i}deltaSNP':=rSNPi/{i}SNPi]"), collapse = ""))}
@@ -149,27 +149,27 @@ j_df_nofilt<-setnames(j_df, c('rCHROM','POS','rREF','rALT','rAD0','rAD1','rDP','
 
 ```
 ```{r filter}
-a_df <- filterSNPs(SNPset = a_df_nofilt, refAlleleFreq = 0.10, minTotalDepth = 20, maxTotalDepth = 250, depthDifference = 100, minSampleDepth = 20, minGQ = 20, verbose = TRUE)
+a_df <- filterSNPs(SNPset = a_df_nofilt, refAlleleFreq = 0.10, minTotalDepth = 50, maxTotalDepth = 100, depthDifference = 100, minSampleDepth = 10, minGQ = 20, verbose = TRUE)
 
-f_df <- filterSNPs(SNPset = f_df_nofilt, refAlleleFreq = 0.10, minTotalDepth = 20, maxTotalDepth = 250, depthDifference = 100, minSampleDepth = 20, minGQ = 20, verbose = TRUE)
+f_df <- filterSNPs(SNPset = f_df_nofilt, refAlleleFreq = 0.10, minTotalDepth = 50, maxTotalDepth = 100, depthDifference = 100, minSampleDepth = 10, minGQ = 20, verbose = TRUE)
 
-j_df <- filterSNPs(SNPset = j_df_nofilt, refAlleleFreq = 0.10, minTotalDepth = 20, maxTotalDepth = 250, depthDifference = 100, minSampleDepth = 20, minGQ = 20, verbose = TRUE)
+j_df <- filterSNPs(SNPset = j_df_nofilt, refAlleleFreq = 0.10, minTotalDepth = 50, maxTotalDepth = 100, depthDifference = 100, minSampleDepth = 10, minGQ = 20, verbose = TRUE)
 ```
 
-```{r depth plot, fig.show="hold", fig.width=3, fig.height=3}
-ggplot(data = a_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000) +ggtitle("a90%m")
+```{r depth plot, include=TRUE, fig.show="hold", fig.width=3, fig.height=3}
+ggplot(data = a_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW))  +ggtitle("a90%m") #+xlim(0,1000)
 #ggplot(data = b_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000)
 #ggplot(data = c_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000)
 #ggplot(data = d_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000)
 #ggplot(data = e_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000)
-ggplot(data = f_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000) +ggtitle("f50%m")
+ggplot(data = f_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW))+ggtitle("f50%m")
 #ggplot(data = g_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000)
 #ggplot(data = h_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000)
 #ggplot(data = i_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000)
-ggplot(data = j_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000) +ggtitle("j11%m")
+ggplot(data = j_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +ggtitle("j11%m")
 ```
 
-```{r ref frequency, fig.show="hold", fig.width= 3, fig.height=3}
+```{r ref frequency, include=TRUE, fig.show="hold", fig.width= 3, fig.height=3}
 ggplot(data = a_df) +geom_histogram(aes(x = REF_FRQ))+ggtitle("a90%m")
 #ggplot(data = b_df) +geom_histogram(aes(x = REF_FRQ))
 #ggplot(data = c_df) +geom_histogram(aes(x = REF_FRQ))
