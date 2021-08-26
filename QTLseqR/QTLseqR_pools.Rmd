@@ -2,7 +2,9 @@
 title: "qtlseqr"
 author: "Casey Flay"
 date: "12/08/2021"
-output: html_document
+output:
+  html_document: default
+  word_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -16,10 +18,11 @@ library(here)
 library(QTLseqr)
 setDTthreads(1)
 module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 perlbrew/0.76")
+knitr::opts_chunk$set(echo = FALSE, include=FALSE)
 ```
 
 ##files for this work were prepared in PSApopoolation
-```{r bamfiles made in PSApopoolationfiles.Rmd}
+```{r bamfiles made in PSApopoolationfiles.Rmd, eval=FALSE}
 bcfmpile_parents     <- as.data.table(grep(paste("bcfmpile_parents"), list.files(path="."), invert=FALSE, value=TRUE))
 bcfmpile_samples     <- as.data.table(grep("bcfmpile_samples", list.files(path="."), invert=FALSE, value=TRUE))
 bcfmpile_mrgdparents <- as.data.table(grep("mrgdparents_sort", list.files(path="."), invert=FALSE, value=TRUE))
@@ -50,20 +53,19 @@ mp  <-     rbind(mps1,mps2)
 rm(abfiles, bcfmpile_parents,bcfmpile_mrgdparents, bcfmpile_samples, mps1, mps2)
 ```
 
-```{r}
+```{r, eval=FALSE}
 vcfin       <- mp[,V1]
 
 for (i in vcfin){
-cmd          <- glue::glue("bcftools query {i} -r 'chr25' -e 'INFO/DP<20 || INFO/DP>120' -f '[[%CHROM]]\t%POS\t%REF\t%ALT\t%AD{{0}}\t%AD{{1}}\t%DP[[\t%GQ\t%PL]] \n' -o {i}data")
+cmd          <- glue::glue("bcftools query {i} -r 'chr25' -e 'INFO/DP<10 || INFO/DP>250' -f '[[%CHROM]]\t%POS\t%REF\t%ALT\t%AD{{0}}\t%AD{{1}}\t%DP[[\t%GQ\t%PL]] \n' -o {i}data")
 Log          <- "query78e" ;Ol<-paste0(here('QTLseqR/logD/'),Log,".out");Oe<-paste0(here('QTLseqR/logD/'),Log,".err")
 bsub_cmd     <- glue("bsub -n 8 -o {Ol} -e {Oe} {cmd}")
 system(bsub_cmd)
 }
-#&& INFO/AD[1]==INFO/DP
 ```
 
 ##Calculate AF over all pools
-```{r}
+```{r, eval=FALSE}
 a <- fread("bcfmpile_samples_A1_chr25.vcfdata", col.names = c('aCHROM','POS','aREF','aALT','aAD0','aAD1','aDP','aGQ','aPL'), key = 'POS')
 b <- fread("bcfmpile_samples_B2_chr25.vcfdata", col.names = c('bCHROM','POS','bREF','bALT','bAD0','bAD1','bDP','bGQ','bPL'), key = 'POS')
 c <- fread("bcfmpile_samples_C3_chr25.vcfdata", col.names = c('cCHROM','POS','cREF','cALT','cAD0','cAD1','cDP','cGQ','cPL'), key = 'POS')
@@ -111,21 +113,22 @@ rm(mp,a)
 
 ```
 
-```{r group for analysis rename for QTLseqR and filter}
-#df <- fread('malepool_dt.csv')
+```{r group for analysis rename for QTLseqR}
+df <- fread('malepool_dt.csv')
+pools <- as.data.table(c("a","b","c","d","e","f","g","h","i","j","r"))
 for (i in pools){deltaSNPcopy_my_contents_for_below <- glue("[,.(rCHROM,rREF,rALT,rAD0,rAD1,rDP,rGQ,rPL,rSNPi,POS,{i}REF,{i}ALT,{i}AD0,{i}AD1,{i}DP,{i}GQ,{i}PL,{i}SNPi,{i}deltaSNP),{i}REF_FRQ]")}
 #deltaSNPcopy_my_contents_for_below#copy cmd script and paste below. it works....
 
-a_df<-df[,.(rCHROM,rREF,rALT,rAD0,rAD1,rDP,rGQ,rPL,rSNPi,POS,aREF,aALT,aAD0,aAD1,aDP,aGQ,aPL,aSNPi,adeltaSNP,aREF_FRQ)]
-b_df<-df[,.(rCHROM,rREF,rALT,rAD0,rAD1,rDP,rGQ,rPL,rSNPi,POS,bREF,bALT,bAD0,bAD1,bDP,bGQ,bPL,bSNPi,bdeltaSNP,bREF_FRQ)]
-c_df<-df[,.(rCHROM,rREF,rALT,rAD0,rAD1,rDP,rGQ,rPL,rSNPi,POS,cREF,cALT,cAD0,cAD1,cDP,cGQ,cPL,cSNPi,cdeltaSNP,cREF_FRQ)]
-d_df<-df[,.(rCHROM,rREF,rALT,rAD0,rAD1,rDP,rGQ,rPL,rSNPi,POS,dREF,dALT,dAD0,dAD1,dDP,dGQ,dPL,dSNPi,ddeltaSNP,dREF_FRQ)]
-e_df<-df[,.(rCHROM,rREF,rALT,rAD0,rAD1,rDP,rGQ,rPL,rSNPi,POS,eREF,eALT,eAD0,eAD1,eDP,eGQ,ePL,eSNPi,edeltaSNP,eREF_FRQ)]
-f_df<-df[,.(rCHROM,rREF,rALT,rAD0,rAD1,rDP,rGQ,rPL,rSNPi,POS,fREF,fALT,fAD0,fAD1,fDP,fGQ,fPL,fSNPi,fdeltaSNP,fREF_FRQ)]
-g_df<-df[,.(rCHROM,rREF,rALT,rAD0,rAD1,rDP,rGQ,rPL,rSNPi,POS,gREF,gALT,gAD0,gAD1,gDP,gGQ,gPL,gSNPi,gdeltaSNP,gREF_FRQ)]
-h_df<-df[,.(rCHROM,rREF,rALT,rAD0,rAD1,rDP,rGQ,rPL,rSNPi,POS,hREF,hALT,hAD0,hAD1,hDP,hGQ,hPL,hSNPi,hdeltaSNP,hREF_FRQ)]
-i_df<-df[,.(rCHROM,rREF,rALT,rAD0,rAD1,rDP,rGQ,rPL,rSNPi,POS,iREF,iALT,iAD0,iAD1,iDP,iGQ,iPL,iSNPi,ideltaSNP,iREF_FRQ)]
-j_df<-df[,.(rCHROM,rREF,rALT,rAD0,rAD1,rDP,rGQ,rPL,rSNPi,POS,jREF,jALT,jAD0,jAD1,jDP,jGQ,jPL,jSNPi,jdeltaSNP,jREF_FRQ)]
+a_df<-df[,.(rCHROM,rREF,rALT,rAD0,rAD1,rDP,rGQ,rPL,rSNPi,POS,aREF,aALT,aAD0,aAD1,aDP,aGQ,aPL,aSNPi,adeltaSNP,aREF_FRQ)][aALT!=".",]
+#b_df<-df[,.(rCHROM,rREF,rALT,rAD0,rAD1,rDP,rGQ,rPL,rSNPi,POS,bREF,bALT,bAD0,bAD1,bDP,bGQ,bPL,bSNPi,bdeltaSNP,bREF_FRQ)][bALT!=".",]
+#c_df<-df[,.(rCHROM,rREF,rALT,rAD0,rAD1,rDP,rGQ,rPL,rSNPi,POS,cREF,cALT,cAD0,cAD1,cDP,cGQ,cPL,cSNPi,cdeltaSNP,cREF_FRQ)][cALT!=".",]
+#d_df<-df[,.(rCHROM,rREF,rALT,rAD0,rAD1,rDP,rGQ,rPL,rSNPi,POS,dREF,dALT,dAD0,dAD1,dDP,dGQ,dPL,dSNPi,ddeltaSNP,dREF_FRQ)][dALT!=".",]
+#e_df<-df[,.(rCHROM,rREF,rALT,rAD0,rAD1,rDP,rGQ,rPL,rSNPi,POS,eREF,eALT,eAD0,eAD1,eDP,eGQ,ePL,eSNPi,edeltaSNP,eREF_FRQ)][eALT!=".",]
+f_df<-df[,.(rCHROM,rREF,rALT,rAD0,rAD1,rDP,rGQ,rPL,rSNPi,POS,fREF,fALT,fAD0,fAD1,fDP,fGQ,fPL,fSNPi,fdeltaSNP,fREF_FRQ)][fALT!=".",]
+#g_df<-df[,.(rCHROM,rREF,rALT,rAD0,rAD1,rDP,rGQ,rPL,rSNPi,POS,gREF,gALT,gAD0,gAD1,gDP,gGQ,gPL,gSNPi,gdeltaSNP,gREF_FRQ)][gALT!=".",]
+#h_df<-df[,.(rCHROM,rREF,rALT,rAD0,rAD1,rDP,rGQ,rPL,rSNPi,POS,hREF,hALT,hAD0,hAD1,hDP,hGQ,hPL,hSNPi,hdeltaSNP,hREF_FRQ)][hALT!=".",]
+#i_df<-df[,.(rCHROM,rREF,rALT,rAD0,rAD1,rDP,rGQ,rPL,rSNPi,POS,iREF,iALT,iAD0,iAD1,iDP,iGQ,iPL,iSNPi,ideltaSNP,iREF_FRQ)][iALT!=".",]
+j_df<-df[,.(rCHROM,rREF,rALT,rAD0,rAD1,rDP,rGQ,rPL,rSNPi,POS,jREF,jALT,jAD0,jAD1,jDP,jGQ,jPL,jSNPi,jdeltaSNP,jREF_FRQ)][jALT!=".",]
 
 ##low =Russell,  high=sample
 
@@ -133,94 +136,208 @@ for (i in pools){copy_my_contents_for_below <-paste(glue("{i}_df<-"), glue("setn
 }
 #copy_my_contents_for_below#copy cmd script and paste below.
 
-a_df<-setnames(a_df, c('rCHROM','POS','rREF','rALT','rAD0','rAD1','rDP','rGQ','rPL','rSNPi','aAD0','aAD1','aDP','aGQ','aPL','aSNPi','aREF_FRQ','adeltaSNP'), c('CHROM','POS','REF','ALT','AD_REF.LOW','AD_ALT.LOW','DP.LOW','GQ.LOW','PL.LOW','SNPindex.LOW','AD_REF.HIGH','AD_ALT.HIGH','DP.HIGH','GQ.HIGH','PL.HIGH','SNPindex.HIGH','REF_FRQ','deltaSNP'))
-b_df<-setnames(b_df, c('rCHROM','POS','rREF','rALT','rAD0','rAD1','rDP','rGQ','rPL','rSNPi','bAD0','bAD1','bDP','bGQ','bPL','bSNPi','bREF_FRQ','bdeltaSNP'), c('CHROM','POS','REF','ALT','AD_REF.LOW','AD_ALT.LOW','DP.LOW','GQ.LOW','PL.LOW','SNPindex.LOW','AD_REF.HIGH','AD_ALT.HIGH','DP.HIGH','GQ.HIGH','PL.HIGH','SNPindex.HIGH','REF_FRQ','deltaSNP'))
-c_df<-setnames(c_df, c('rCHROM','POS','rREF','rALT','rAD0','rAD1','rDP','rGQ','rPL','rSNPi','cAD0','cAD1','cDP','cGQ','cPL','cSNPi','cREF_FRQ','cdeltaSNP'), c('CHROM','POS','REF','ALT','AD_REF.LOW','AD_ALT.LOW','DP.LOW','GQ.LOW','PL.LOW','SNPindex.LOW','AD_REF.HIGH','AD_ALT.HIGH','DP.HIGH','GQ.HIGH','PL.HIGH','SNPindex.HIGH','REF_FRQ','deltaSNP'))
-d_df<-setnames(d_df, c('rCHROM','POS','rREF','rALT','rAD0','rAD1','rDP','rGQ','rPL','rSNPi','dAD0','dAD1','dDP','dGQ','dPL','dSNPi','dREF_FRQ','ddeltaSNP'), c('CHROM','POS','REF','ALT','AD_REF.LOW','AD_ALT.LOW','DP.LOW','GQ.LOW','PL.LOW','SNPindex.LOW','AD_REF.HIGH','AD_ALT.HIGH','DP.HIGH','GQ.HIGH','PL.HIGH','SNPindex.HIGH','REF_FRQ','deltaSNP'))
-e_df<-setnames(e_df, c('rCHROM','POS','rREF','rALT','rAD0','rAD1','rDP','rGQ','rPL','rSNPi','eAD0','eAD1','eDP','eGQ','ePL','eSNPi','eREF_FRQ','edeltaSNP'), c('CHROM','POS','REF','ALT','AD_REF.LOW','AD_ALT.LOW','DP.LOW','GQ.LOW','PL.LOW','SNPindex.LOW','AD_REF.HIGH','AD_ALT.HIGH','DP.HIGH','GQ.HIGH','PL.HIGH','SNPindex.HIGH','REF_FRQ','deltaSNP'))
-f_df<-setnames(f_df, c('rCHROM','POS','rREF','rALT','rAD0','rAD1','rDP','rGQ','rPL','rSNPi','fAD0','fAD1','fDP','fGQ','fPL','fSNPi','fREF_FRQ','fdeltaSNP'), c('CHROM','POS','REF','ALT','AD_REF.LOW','AD_ALT.LOW','DP.LOW','GQ.LOW','PL.LOW','SNPindex.LOW','AD_REF.HIGH','AD_ALT.HIGH','DP.HIGH','GQ.HIGH','PL.HIGH','SNPindex.HIGH','REF_FRQ','deltaSNP'))
-g_df<-setnames(g_df, c('rCHROM','POS','rREF','rALT','rAD0','rAD1','rDP','rGQ','rPL','rSNPi','gAD0','gAD1','gDP','gGQ','gPL','gSNPi','gREF_FRQ','gdeltaSNP'), c('CHROM','POS','REF','ALT','AD_REF.LOW','AD_ALT.LOW','DP.LOW','GQ.LOW','PL.LOW','SNPindex.LOW','AD_REF.HIGH','AD_ALT.HIGH','DP.HIGH','GQ.HIGH','PL.HIGH','SNPindex.HIGH','REF_FRQ','deltaSNP'))
-h_df<-setnames(h_df, c('rCHROM','POS','rREF','rALT','rAD0','rAD1','rDP','rGQ','rPL','rSNPi','hAD0','hAD1','hDP','hGQ','hPL','hSNPi','hREF_FRQ','hdeltaSNP'), c('CHROM','POS','REF','ALT','AD_REF.LOW','AD_ALT.LOW','DP.LOW','GQ.LOW','PL.LOW','SNPindex.LOW','AD_REF.HIGH','AD_ALT.HIGH','DP.HIGH','GQ.HIGH','PL.HIGH','SNPindex.HIGH','REF_FRQ','deltaSNP'))
-i_df<-setnames(i_df, c('rCHROM','POS','rREF','rALT','rAD0','rAD1','rDP','rGQ','rPL','rSNPi','iAD0','iAD1','iDP','iGQ','iPL','iSNPi','iREF_FRQ','ideltaSNP'), c('CHROM','POS','REF','ALT','AD_REF.LOW','AD_ALT.LOW','DP.LOW','GQ.LOW','PL.LOW','SNPindex.LOW','AD_REF.HIGH','AD_ALT.HIGH','DP.HIGH','GQ.HIGH','PL.HIGH','SNPindex.HIGH','REF_FRQ','deltaSNP'))
-j_df<-setnames(j_df, c('rCHROM','POS','rREF','rALT','rAD0','rAD1','rDP','rGQ','rPL','rSNPi','jAD0','jAD1','jDP','jGQ','jPL','jSNPi','jREF_FRQ','jdeltaSNP'), c('CHROM','POS','REF','ALT','AD_REF.LOW','AD_ALT.LOW','DP.LOW','GQ.LOW','PL.LOW','SNPindex.LOW','AD_REF.HIGH','AD_ALT.HIGH','DP.HIGH','GQ.HIGH','PL.HIGH','SNPindex.HIGH','REF_FRQ','deltaSNP'))
-#df_filt <- df[refAlleleFreq = 0.20, minTotalDepth = 100, maxTotalDepth = 400, depthDifference = 100, minSampleDepth = 40, minGQ = 99, verbose = TRUE)
+a_df_nofilt <-setnames(a_df, c('rCHROM','POS','rREF','rALT','rAD0','rAD1','rDP','rGQ','rPL','rSNPi','aAD0','aAD1','aDP','aGQ','aPL','aSNPi','aREF_FRQ','adeltaSNP'), c('CHROM','POS','REF','ALT','AD_REF.LOW','AD_ALT.LOW','DP.LOW','GQ.LOW','PL.LOW','SNPindex.LOW','AD_REF.HIGH','AD_ALT.HIGH','DP.HIGH','GQ.HIGH','PL.HIGH','SNPindex.HIGH','REF_FRQ','deltaSNP'))
+#b_df<-setnames(b_df, c('rCHROM','POS','rREF','rALT','rAD0','rAD1','rDP','rGQ','rPL','rSNPi','bAD0','bAD1','bDP','bGQ','bPL','bSNPi','bREF_FRQ','bdeltaSNP'), c('CHROM','POS','REF','ALT','AD_REF.LOW','AD_ALT.LOW','DP.LOW','GQ.LOW','PL.LOW','SNPindex.LOW','AD_REF.HIGH','AD_ALT.HIGH','DP.HIGH','GQ.HIGH','PL.HIGH','SNPindex.HIGH','REF_FRQ','deltaSNP'))
+#c_df<-setnames(c_df, c('rCHROM','POS','rREF','rALT','rAD0','rAD1','rDP','rGQ','rPL','rSNPi','cAD0','cAD1','cDP','cGQ','cPL','cSNPi','cREF_FRQ','cdeltaSNP'), c('CHROM','POS','REF','ALT','AD_REF.LOW','AD_ALT.LOW','DP.LOW','GQ.LOW','PL.LOW','SNPindex.LOW','AD_REF.HIGH','AD_ALT.HIGH','DP.HIGH','GQ.HIGH','PL.HIGH','SNPindex.HIGH','REF_FRQ','deltaSNP'))
+#d_df<-setnames(d_df, c('rCHROM','POS','rREF','rALT','rAD0','rAD1','rDP','rGQ','rPL','rSNPi','dAD0','dAD1','dDP','dGQ','dPL','dSNPi','dREF_FRQ','ddeltaSNP'), c('CHROM','POS','REF','ALT','AD_REF.LOW','AD_ALT.LOW','DP.LOW','GQ.LOW','PL.LOW','SNPindex.LOW','AD_REF.HIGH','AD_ALT.HIGH','DP.HIGH','GQ.HIGH','PL.HIGH','SNPindex.HIGH','REF_FRQ','deltaSNP'))
+#e_df<-setnames(e_df, c('rCHROM','POS','rREF','rALT','rAD0','rAD1','rDP','rGQ','rPL','rSNPi','eAD0','eAD1','eDP','eGQ','ePL','eSNPi','eREF_FRQ','edeltaSNP'), c('CHROM','POS','REF','ALT','AD_REF.LOW','AD_ALT.LOW','DP.LOW','GQ.LOW','PL.LOW','SNPindex.LOW','AD_REF.HIGH','AD_ALT.HIGH','DP.HIGH','GQ.HIGH','PL.HIGH','SNPindex.HIGH','REF_FRQ','deltaSNP'))
+f_df_nofilt<-setnames(f_df, c('rCHROM','POS','rREF','rALT','rAD0','rAD1','rDP','rGQ','rPL','rSNPi','fAD0','fAD1','fDP','fGQ','fPL','fSNPi','fREF_FRQ','fdeltaSNP'), c('CHROM','POS','REF','ALT','AD_REF.LOW','AD_ALT.LOW','DP.LOW','GQ.LOW','PL.LOW','SNPindex.LOW','AD_REF.HIGH','AD_ALT.HIGH','DP.HIGH','GQ.HIGH','PL.HIGH','SNPindex.HIGH','REF_FRQ','deltaSNP'))
+#g_df<-setnames(g_df, c('rCHROM','POS','rREF','rALT','rAD0','rAD1','rDP','rGQ','rPL','rSNPi','gAD0','gAD1','gDP','gGQ','gPL','gSNPi','gREF_FRQ','gdeltaSNP'), c('CHROM','POS','REF','ALT','AD_REF.LOW','AD_ALT.LOW','DP.LOW','GQ.LOW','PL.LOW','SNPindex.LOW','AD_REF.HIGH','AD_ALT.HIGH','DP.HIGH','GQ.HIGH','PL.HIGH','SNPindex.HIGH','REF_FRQ','deltaSNP'))
+#h_df<-setnames(h_df, c('rCHROM','POS','rREF','rALT','rAD0','rAD1','rDP','rGQ','rPL','rSNPi','hAD0','hAD1','hDP','hGQ','hPL','hSNPi','hREF_FRQ','hdeltaSNP'), c('CHROM','POS','REF','ALT','AD_REF.LOW','AD_ALT.LOW','DP.LOW','GQ.LOW','PL.LOW','SNPindex.LOW','AD_REF.HIGH','AD_ALT.HIGH','DP.HIGH','GQ.HIGH','PL.HIGH','SNPindex.HIGH','REF_FRQ','deltaSNP'))
+#i_df<-setnames(i_df, c('rCHROM','POS','rREF','rALT','rAD0','rAD1','rDP','rGQ','rPL','rSNPi','iAD0','iAD1','iDP','iGQ','iPL','iSNPi','iREF_FRQ','ideltaSNP'), c('CHROM','POS','REF','ALT','AD_REF.LOW','AD_ALT.LOW','DP.LOW','GQ.LOW','PL.LOW','SNPindex.LOW','AD_REF.HIGH','AD_ALT.HIGH','DP.HIGH','GQ.HIGH','PL.HIGH','SNPindex.HIGH','REF_FRQ','deltaSNP'))
+j_df_nofilt<-setnames(j_df, c('rCHROM','POS','rREF','rALT','rAD0','rAD1','rDP','rGQ','rPL','rSNPi','jAD0','jAD1','jDP','jGQ','jPL','jSNPi','jREF_FRQ','jdeltaSNP'), c('CHROM','POS','REF','ALT','AD_REF.LOW','AD_ALT.LOW','DP.LOW','GQ.LOW','PL.LOW','SNPindex.LOW','AD_REF.HIGH','AD_ALT.HIGH','DP.HIGH','GQ.HIGH','PL.HIGH','SNPindex.HIGH','REF_FRQ','deltaSNP'))
+
 ```
-#CHROM POS REF ALT AD_REF.LOW, AD_ALT.LOW, DP.LOW, GQ.LOW, PL.LOW, SNPindex.LOW, AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH, REF_FRQ, deltaSNP
-```{r}
-ggplot(data = a_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) + xlim(0,1000)
-ggplot(data = b_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000)
-ggplot(data = c_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000)
-ggplot(data = d_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000)
-ggplot(data = e_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000)
-ggplot(data = f_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000)
-ggplot(data = g_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000)
-ggplot(data = h_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000)
-ggplot(data = i_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000)
-ggplot(data = j_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000)
+```{r filter}
+a_df <- filterSNPs(SNPset = a_df_nofilt, refAlleleFreq = 0.10, minTotalDepth = 20, maxTotalDepth = 250, depthDifference = 100, minSampleDepth = 20, minGQ = 20, verbose = TRUE)
+
+f_df <- filterSNPs(SNPset = f_df_nofilt, refAlleleFreq = 0.10, minTotalDepth = 20, maxTotalDepth = 250, depthDifference = 100, minSampleDepth = 20, minGQ = 20, verbose = TRUE)
+
+j_df <- filterSNPs(SNPset = j_df_nofilt, refAlleleFreq = 0.10, minTotalDepth = 20, maxTotalDepth = 250, depthDifference = 100, minSampleDepth = 20, minGQ = 20, verbose = TRUE)
 ```
-```{r }
-ggplot(data = a_df) +geom_histogram(aes(x = REF_FRQ))
-ggplot(data = b_df) +geom_histogram(aes(x = REF_FRQ))
-ggplot(data = c_df) +geom_histogram(aes(x = REF_FRQ))
-ggplot(data = d_df) +geom_histogram(aes(x = REF_FRQ))
-ggplot(data = e_df) +geom_histogram(aes(x = REF_FRQ))
-ggplot(data = f_df) +geom_histogram(aes(x = REF_FRQ))
-ggplot(data = g_df) +geom_histogram(aes(x = REF_FRQ))
-ggplot(data = h_df) +geom_histogram(aes(x = REF_FRQ))
-ggplot(data = i_df) +geom_histogram(aes(x = REF_FRQ))
-ggplot(data = j_df) +geom_histogram(aes(x = REF_FRQ))
+
+```{r depth plot, fig.show="hold", fig.width=3, fig.height=3}
+ggplot(data = a_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000) +ggtitle("a90%m")
+#ggplot(data = b_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000)
+#ggplot(data = c_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000)
+#ggplot(data = d_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000)
+#ggplot(data = e_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000)
+ggplot(data = f_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000) +ggtitle("f50%m")
+#ggplot(data = g_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000)
+#ggplot(data = h_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000)
+#ggplot(data = i_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000)
+ggplot(data = j_df) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +xlim(0,1000) +ggtitle("j11%m")
 ```
+
+```{r ref frequency, fig.show="hold", fig.width= 3, fig.height=3}
+ggplot(data = a_df) +geom_histogram(aes(x = REF_FRQ))+ggtitle("a90%m")
+#ggplot(data = b_df) +geom_histogram(aes(x = REF_FRQ))
+#ggplot(data = c_df) +geom_histogram(aes(x = REF_FRQ))
+#ggplot(data = d_df) +geom_histogram(aes(x = REF_FRQ))
+#ggplot(data = e_df) +geom_histogram(aes(x = REF_FRQ))
+ggplot(data = f_df) +geom_histogram(aes(x = REF_FRQ))+ggtitle("f50%m")
+#ggplot(data = g_df) +geom_histogram(aes(x = REF_FRQ))
+#ggplot(data = h_df) +geom_histogram(aes(x = REF_FRQ))
+#ggplot(data = i_df) +geom_histogram(aes(x = REF_FRQ))
+ggplot(data = j_df) +geom_histogram(aes(x = REF_FRQ))+ggtitle("j11%m")
+```
+
+#```{r exit knit}
+#knitr::knit_exit()
+#```
 
 ```{r QTLseqAnalysis}
-a_df_qtl <- runQTLseqAnalysis(a_df,windowSize = 1e6, popStruc = "F1", bulkSize = c(10, 10), replications = 10000, intervals = c(95, 99))
-b_df_qtl <- runQTLseqAnalysis(b_df,windowSize = 1e6, popStruc = "F1", bulkSize = c(10, 10), replications = 10000, intervals = c(95, 99))
-c_df_qtl <- runQTLseqAnalysis(c_df,windowSize = 1e6, popStruc = "F1", bulkSize = c(10, 10), replications = 10000, intervals = c(95, 99))
-d_df_qtl <- runQTLseqAnalysis(d_df,windowSize = 1e6, popStruc = "F1", bulkSize = c(10, 10), replications = 10000, intervals = c(95, 99))
-e_df_qtl <- runQTLseqAnalysis(e_df,windowSize = 1e6, popStruc = "F1", bulkSize = c(10, 10), replications = 10000, intervals = c(95, 99))
-f_df_qtl <- runQTLseqAnalysis(f_df,windowSize = 1e6, popStruc = "F1", bulkSize = c(10, 10), replications = 10000, intervals = c(95, 99))
-g_df_qtl <- runQTLseqAnalysis(g_df,windowSize = 1e6, popStruc = "F1", bulkSize = c(10, 10), replications = 10000, intervals = c(95, 99))
-h_df_qtl <- runQTLseqAnalysis(h_df,windowSize = 1e6, popStruc = "F1", bulkSize = c(10, 10), replications = 10000, intervals = c(95, 99))
-i_df_qtl <- runQTLseqAnalysis(i_df,windowSize = 1e6, popStruc = "F1", bulkSize = c(10, 10), replications = 10000, intervals = c(95, 99))
-j_df_qtl <- runQTLseqAnalysis(j_df,windowSize = 1e6, popStruc = "F1", bulkSize = c(10, 10), replications = 10000, intervals = c(95, 99))
+a_df_qtl <- runQTLseqAnalysis(a_df,windowSize = 2e6, popStruc = "F1", bulkSize = c(10,10), replications = 10000, intervals = c(95, 99))
+#b_df_qtl <- runQTLseqAnalysis(b_df,windowSize = 1e6, popStruc = "F1", bulkSize = c(10,10), replications = 10000, intervals = c(95, 99))
+#c_df_qtl <- runQTLseqAnalysis(c_df,windowSize = 1e6, popStruc = "F1", bulkSize = c(10,10), replications = 10000, intervals = c(95, 99))
+#d_df_qtl <- runQTLseqAnalysis(d_df,windowSize = 1e6, popStruc = "F1", bulkSize = c(10,10), replications = 10000, intervals = c(95, 99))
+#e_df_qtl <- runQTLseqAnalysis(e_df,windowSize = 1e6, popStruc = "F1", bulkSize = c(10,10), replications = 10000, intervals = c(95, 99))
+f_df_qtl <- runQTLseqAnalysis(f_df,windowSize = 2e6, popStruc = "F1", bulkSize = c(10,10), replications = 10000, intervals = c(95, 99))
+#g_df_qtl <- runQTLseqAnalysis(g_df,windowSize = 1e6, popStruc = "F1", bulkSize = c(10,10), replications = 10000, intervals = c(95, 99))
+#h_df_qtl <- runQTLseqAnalysis(h_df,windowSize = 1e6, popStruc = "F1", bulkSize = c(10,10), replications = 10000, intervals = c(95, 99))
+#i_df_qtl <- runQTLseqAnalysis(i_df,windowSize = 1e6, popStruc = "F1", bulkSize = c(10,10), replications = 10000, intervals = c(95, 99))
+j_df_qtl <- runQTLseqAnalysis(j_df,windowSize = 2e6, popStruc = "F1", bulkSize = c(10,10), replications = 10000, intervals = c(95, 99))
 ```
 
-```{r QTLseqAnalysis}
-a_df_qtl <- runGprimeAnalysis(a_df_qtl, windowSize = 1e6, outlierFilter = "deltaSNP", filterThreshold = 0.1)
-b_df_qtl <- runGprimeAnalysis(b_df_qtl, windowSize = 1e6, outlierFilter = "deltaSNP", filterThreshold = 0.1)
-c_df_qtl <- runGprimeAnalysis(c_df_qtl, windowSize = 1e6, outlierFilter = "deltaSNP", filterThreshold = 0.1)
-d_df_qtl <- runGprimeAnalysis(d_df_qtl, windowSize = 1e6, outlierFilter = "deltaSNP", filterThreshold = 0.1)
-e_df_qtl <- runGprimeAnalysis(e_df_qtl, windowSize = 1e6, outlierFilter = "deltaSNP", filterThreshold = 0.1)
-f_df_qtl <- runGprimeAnalysis(f_df_qtl, windowSize = 1e6, outlierFilter = "deltaSNP", filterThreshold = 0.1)
-g_df_qtl <- runGprimeAnalysis(g_df_qtl, windowSize = 1e6, outlierFilter = "deltaSNP", filterThreshold = 0.1)
-h_df_qtl <- runGprimeAnalysis(h_df_qtl, windowSize = 1e6, outlierFilter = "deltaSNP", filterThreshold = 0.1)
-i_df_qtl <- runGprimeAnalysis(i_df_qtl, windowSize = 1e6, outlierFilter = "deltaSNP", filterThreshold = 0.1)
-j_df_qtl <- runGprimeAnalysis(j_df_qtl, windowSize = 1e6, outlierFilter = "deltaSNP", filterThreshold = 0.1)
+```{r GprimeAnalysis}
+a_df_qtl <- runGprimeAnalysis(a_df_qtl, windowSize = 2e6, outlierFilter = "deltaSNP", filterThreshold = 0.1)
+#b_df_qtl <- runGprimeAnalysis(b_df_qtl, windowSize = 1e6, outlierFilter = "deltaSNP", filterThreshold = 0.1)
+#c_df_qtl <- runGprimeAnalysis(c_df_qtl, windowSize = 1e6, outlierFilter = "deltaSNP", filterThreshold = 0.1)
+#d_df_qtl <- runGprimeAnalysis(d_df_qtl, windowSize = 1e6, outlierFilter = "deltaSNP", filterThreshold = 0.1)
+#e_df_qtl <- runGprimeAnalysis(e_df_qtl, windowSize = 1e6, outlierFilter = "deltaSNP", filterThreshold = 0.1)
+f_df_qtl <- runGprimeAnalysis(f_df_qtl, windowSize = 2e6, outlierFilter = "deltaSNP", filterThreshold = 0.1)
+#g_df_qtl <- runGprimeAnalysis(g_df_qtl, windowSize = 1e6, outlierFilter = "deltaSNP", filterThreshold = 0.1)
+#h_df_qtl <- runGprimeAnalysis(h_df_qtl, windowSize = 1e6, outlierFilter = "deltaSNP", filterThreshold = 0.1)
+#i_df_qtl <- runGprimeAnalysis(i_df_qtl, windowSize = 1e6, outlierFilter = "deltaSNP", filterThreshold = 0.1)
+j_df_qtl <- runGprimeAnalysis(j_df_qtl, windowSize = 2e6, outlierFilter = "deltaSNP", filterThreshold = 0.1)
+```
+
+```{r plotGprimeDist, include=TRUE, fig.show="hold", fig.width= 5, fig.height=3}
+a90_Hampel_filt <- plotGprimeDist(SNPset = a_df_qtl, outlierFilter = "Hampel") +ggtitle("a90%m")
+#b75_Hampel_filt <- plotGprimeDist(SNPset = b_df_qtl, outlierFilter = "Hampel")
+#c60_Hampel_filt <- plotGprimeDist(SNPset = c_df_qtl, outlierFilter = "Hampel")
+#d44_Hampel_filt <- plotGprimeDist(SNPset = d_df_qtl, outlierFilter = "Hampel")
+#e80_Hampel_filt <- plotGprimeDist(SNPset = e_df_qtl, outlierFilter = "Hampel")
+f50_Hampel_filt <- plotGprimeDist(SNPset = f_df_qtl, outlierFilter = "Hampel")+ggtitle("f50%m")
+#g45_Hampel_filt <- plotGprimeDist(SNPset = g_df_qtl, outlierFilter = "Hampel")
+#h68_Hampel_filt <- plotGprimeDist(SNPset = h_df_qtl, outlierFilter = "Hampel")
+#i21_Hampel_filt <- plotGprimeDist(SNPset = i_df_qtl, outlierFilter = "Hampel")
+j11_Hampel_filt <- plotGprimeDist(SNPset = j_df_qtl, outlierFilter = "Hampel")+ggtitle("j11%m")
+
+a90_Hampel_filt
+#e80_Hampel_filt
+#b75_Hampel_filt
+#h68_Hampel_filt
+##c60_Hampel_filt
+f50_Hampel_filt
+#g45_Hampel_filt
+#d44_Hampel_filt
+#i21_Hampel_filt
+j11_Hampel_filt
+```
+
+```{r plotGprimeDist deltaSNP outlier, fig.show="hold", include=TRUE, fig.width= 5, fig.height=3}
+a90_deltaSNP_filt <- plotGprimeDist(SNPset = a_df_qtl, outlierFilter = "deltaSNP", filterThreshold = 0.8)+ggtitle("a90%m")
+#b75_deltaSNP_filt <- plotGprimeDist(SNPset = b_df_qtl, outlierFilter = "deltaSNP", filterThreshold = 0.1)
+#c60_deltaSNP_filt <- plotGprimeDist(SNPset = c_df_qtl, outlierFilter = "deltaSNP", filterThreshold = 0.1)
+#d44_deltaSNP_filt <- plotGprimeDist(SNPset = d_df_qtl, outlierFilter = "deltaSNP", filterThreshold = 0.1)
+#e80_deltaSNP_filt <- plotGprimeDist(SNPset = e_df_qtl, outlierFilter = "deltaSNP", filterThreshold = 0.1)
+f50_deltaSNP_filt <- plotGprimeDist(SNPset = f_df_qtl, outlierFilter = "deltaSNP", filterThreshold = 0.8)+ggtitle("f50%m")
+#g45_deltaSNP_filt <- plotGprimeDist(SNPset = g_df_qtl, outlierFilter = "deltaSNP", filterThreshold = 0.1)
+#h68_deltaSNP_filt <- plotGprimeDist(SNPset = h_df_qtl, outlierFilter = "deltaSNP", filterThreshold = 0.1)
+#i21_deltaSNP_filt <- plotGprimeDist(SNPset = i_df_qtl, outlierFilter = "deltaSNP", filterThreshold = 0.1)
+j11_deltaSNP_filt <- plotGprimeDist(SNPset = j_df_qtl, outlierFilter = "deltaSNP", filterThreshold = 0.8)+ggtitle("j11%m")
+
+a90_deltaSNP_filt
+#e80_deltaSNP_filt
+#b75_deltaSNP_filt
+#h68_deltaSNP_filt
+#c60_deltaSNP_filt
+f50_deltaSNP_filt
+#g45_deltaSNP_filt
+#d44_deltaSNP_filt
+#i21_deltaSNP_filt
+j11_deltaSNP_filt
+```
+
+```{r plot QTLstats nSNPs, include=TRUE, fig.show="hold", fig.width= 3, fig.height=3}
+a90_plotQTLS <- plotQTLStats(SNPset = a_df_qtl, var = "nSNPs")+ggtitle("a90%m")#+ylim(0,400)
+#b75_plotQTLS <- plotQTLStats(SNPset = b_df_qtl, var = "nSNPs")
+#c60_plotQTLS <- plotQTLStats(SNPset = c_df_qtl, var = "nSNPs")
+#d44_plotQTLS <- plotQTLStats(SNPset = d_df_qtl, var = "nSNPs")
+#e80_plotQTLS <- plotQTLStats(SNPset = e_df_qtl, var = "nSNPs")
+f50_plotQTLS <- plotQTLStats(SNPset = f_df_qtl, var = "nSNPs")+ggtitle("f50%m")#+ylim(0,400)
+#g45_plotQTLS <- plotQTLStats(SNPset = g_df_qtl, var = "nSNPs")
+#h68_plotQTLS <- plotQTLStats(SNPset = h_df_qtl, var = "nSNPs")
+#i21_plotQTLS <- plotQTLStats(SNPset = i_df_qtl, var = "nSNPs")
+j11_plotQTLS <- plotQTLStats(SNPset = j_df_qtl, var = "nSNPs")+ggtitle("j11%m")#+ylim(0,400)
+
+a90_plotQTLS
+#e80_plotQTLS
+#b75_plotQTLS
+#h68_plotQTLS
+#c60_plotQTLS
+f50_plotQTLS
+#g45_plotQTLS
+#d44_plotQTLS
+#i21_plotQTLS
+j11_plotQTLS
+```
+
+
+```{r plot QTLstats deltaSNP, include=TRUE, fig.show="hold", fig.width= 3, fig.height=3}
+a90_plotQTLSdelta <- plotQTLStats(SNPset = a_df_qtl, var = "deltaSNP", plotIntervals = TRUE)+ggtitle("a90%m")
+#b75_plotQTLSdelta <- plotQTLStats(SNPset = b_df_qtl, var = "deltaSNP", plotIntervals = TRUE)
+#c60_plotQTLSdelta <- plotQTLStats(SNPset = c_df_qtl, var = "deltaSNP", plotIntervals = TRUE)
+#d44_plotQTLSdelta <- plotQTLStats(SNPset = d_df_qtl, var = "deltaSNP", plotIntervals = TRUE)
+#e80_plotQTLSdelta <- plotQTLStats(SNPset = e_df_qtl, var = "deltaSNP", plotIntervals = TRUE)
+f50_plotQTLSdelta <- plotQTLStats(SNPset = f_df_qtl, var = "deltaSNP", plotIntervals = TRUE)+ggtitle("f50%m")
+#g45_plotQTLSdelta <- plotQTLStats(SNPset = g_df_qtl, var = "deltaSNP", plotIntervals = TRUE)
+#h68_plotQTLSdelta <- plotQTLStats(SNPset = h_df_qtl, var = "deltaSNP", plotIntervals = TRUE)
+#i21_plotQTLSdelta <- plotQTLStats(SNPset = i_df_qtl, var = "deltaSNP", plotIntervals = TRUE)
+j11_plotQTLSdelta <- plotQTLStats(SNPset = j_df_qtl, var = "deltaSNP", plotIntervals = TRUE)+ggtitle("j11%m")
+
+a90_plotQTLSdelta
+#e80_plotQTLSdelta
+#b75_plotQTLSdelta
+#h68_plotQTLSdelta
+#c60_plotQTLSdelta
+f50_plotQTLSdelta
+#g45_plotQTLSdelta
+#d44_plotQTLSdelta
+#i21_plotQTLSdelta
+j11_plotQTLSdelta
+```
+
+```{r plotQTLstats Gprime, fig.show="hold", include=TRUE, fig.width= 3, fig.height=3}
+a90_plotgp <- plotQTLStats(SNPset = a_df_qtl, var = "Gprime", plotThreshold = TRUE, q = 0.01)+ggtitle("a90%m")
+#b75_plotgp <- plotQTLStats(SNPset = b_df_qtl, var = "Gprime", plotThreshold = TRUE, q = 0.01)
+#c60_plotgp <- plotQTLStats(SNPset = c_df_qtl, var = "Gprime", plotThreshold = TRUE, q = 0.01)
+#d44_plotgp <- plotQTLStats(SNPset = d_df_qtl, var = "Gprime", plotThreshold = TRUE, q = 0.01)
+#e80_plotgp <- plotQTLStats(SNPset = e_df_qtl, var = "Gprime", plotThreshold = TRUE, q = 0.01)
+f50_plotgp <- plotQTLStats(SNPset = f_df_qtl, var = "Gprime", plotThreshold = TRUE, q = 0.01)+ggtitle("f50%m")
+#g45_plotgp <- plotQTLStats(SNPset = g_df_qtl, var = "Gprime", plotThreshold = TRUE, q = 0.01)
+#h68_plotgp <- plotQTLStats(SNPset = h_df_qtl, var = "Gprime", plotThreshold = TRUE, q = 0.01)
+#i21_plotgp <- plotQTLStats(SNPset = i_df_qtl, var = "Gprime", plotThreshold = TRUE, q = 0.01)
+j11_plotgp <- plotQTLStats(SNPset = j_df_qtl, var = "Gprime", plotThreshold = TRUE, q = 0.01)+ggtitle("j11%m")
+
+a90_plotgp
+#e80_plotgp
+#b75_plotgp
+#h68_plotgp
+#c60_plotgp
+f50_plotgp
+#g45_plotgp
+#d44_plotgp
+#i21_plotgp
+j11_plotgp
 ```
 
 ```{r}
-plotGprimeDist(SNPset = a_df_qtl, outlierFilter = "Hampel")
-plotGprimeDist(SNPset = b_df_qtl, outlierFilter = "Hampel")
-plotGprimeDist(SNPset = c_df_qtl, outlierFilter = "Hampel")
-plotGprimeDist(SNPset = d_df_qtl, outlierFilter = "Hampel")
-plotGprimeDist(SNPset = e_df_qtl, outlierFilter = "Hampel")
-plotGprimeDist(SNPset = f_df_qtl, outlierFilter = "Hampel")
-plotGprimeDist(SNPset = g_df_qtl, outlierFilter = "Hampel")
-plotGprimeDist(SNPset = h_df_qtl, outlierFilter = "Hampel")
-plotGprimeDist(SNPset = i_df_qtl, outlierFilter = "Hampel")
-plotGprimeDist(SNPset = j_df_qtl, outlierFilter = "Hampel")
-```
+#aqtl <- getQTLTable(SNPset = a_df_qtl, method = "Gprime", alpha = 0.01, export=FALSE)
 
-```{r}
-plotGprimeDist(SNPset =a_df_qtl, outlierFilter = "deltaSNP", filterThreshold = 0.1)
-plotGprimeDist(SNPset =b_df_qtl, outlierFilter = "deltaSNP", filterThreshold = 0.1)
-plotGprimeDist(SNPset =c_df_qtl, outlierFilter = "deltaSNP", filterThreshold = 0.1)
-plotGprimeDist(SNPset =d_df_qtl, outlierFilter = "deltaSNP", filterThreshold = 0.1)
-plotGprimeDist(SNPset =e_df_qtl, outlierFilter = "deltaSNP", filterThreshold = 0.1)
-plotGprimeDist(SNPset =f_df_qtl, outlierFilter = "deltaSNP", filterThreshold = 0.1)
-plotGprimeDist(SNPset =g_df_qtl, outlierFilter = "deltaSNP", filterThreshold = 0.1)
-plotGprimeDist(SNPset =h_df_qtl, outlierFilter = "deltaSNP", filterThreshold = 0.1)
-plotGprimeDist(SNPset =i_df_qtl, outlierFilter = "deltaSNP", filterThreshold = 0.1)
-plotGprimeDist(SNPset =j_df_qtl, outlierFilter = "deltaSNP", filterThreshold = 0.1)
-```
+#fqtl <- getQTLTable(SNPset = f_df_qtl, method = "Gprime", alpha = 0.01, export=FALSE)
 
+#jqtl <- getQTLTable(SNPset = j_df_qtl, method = "Gprime", alpha = 0.01, export=FALSE)
+```
 
