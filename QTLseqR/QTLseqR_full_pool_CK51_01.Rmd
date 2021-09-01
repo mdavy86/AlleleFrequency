@@ -1,0 +1,150 @@
+---
+title: "qtlseqr"
+author: "Casey Flay"
+date: "12/08/2021"
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+library(RLinuxModules)
+library(data.table)
+library(glue)
+library(tidyverse)
+library(here)
+library(QTLseqr)
+setDTthreads(1)
+module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 perlbrew/0.76")
+knitr::opts_chunk$set(echo = FALSE, include=FALSE)
+```
+
+##files for this work were prepared in PSApopoolation
+```{r bamfiles made in PSApopoolationfiles.Rmd, eval=FALSE}
+bcfmpile_parents     <- as.data.table(grep(paste("bcfmpile_parents"), list.files(path="."), invert=FALSE, value=TRUE))
+bcfmpile_samples     <- as.data.table(grep("bcfmpile_samples", list.files(path="."), invert=FALSE, value=TRUE))
+bcfmpile_mrgdparents <- as.data.table(grep("mrgdparents_sort", list.files(path="."), invert=FALSE, value=TRUE))
+abfiles              <- rbindlist(list(bcfmpile_parents,bcfmpile_samples,bcfmpile_mrgdparents))
+
+abfiles <- abfiles[, V2 := str_replace_all(V1, ".vcf$" , "&.vcf")
+                 ][, V2 := str_replace_all(V2, "bcfmpile_parents_" , "bcfmpile_parents_&")
+                 ][, V2 := str_replace_all(V2, "bcfmpile_samples_" , "bcfmpile_samples_&")
+                 ][, V2 := str_replace_all(V2, "_chr25" , "&_chr25")
+                 ][, c("V3", "x2", "x3", "x4") := tstrsplit(V2, "&", fixed=TRUE)]
+abfiles <- abfiles[x3=="_chr25",]
+abfiles <- abfiles[, "CKs" := str_extract(x2, "CK")][V1=="bcfmpile_parents_Russell_chr25.vcf", CKs := "CK"]
+mp  <-  abfiles[, "dir" := "/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/"]
+
+rm(abfiles, bcfmpile_parents,bcfmpile_mrgdparents, bcfmpile_samples)
+```
+
+```{r, makes a data file for each chromosome for each file, eval=FALSE}
+vcfin   <- mp[CKs=="CK",V1]
+chrs   <- c("chr1","chr2","chr3","chr4","chr5","chr6","chr7","chr8","chr9","chr10","chr11","chr12","chr13","chr14","chr15","chr16","chr17","chr18","chr19","chr20","chr21","chr22","chr23","chr24","chr25","chr26","chr27","chr28","chr29")
+for (i in vcfin){
+  for(x in chrs){
+  cmd          <- glue::glue("bcftools query {i} -r '{x}' -e 'INFO/DP<20 || INFO/DP>150' -f '[[%CHROM]]\t%POS\t%REF\t%ALT\t%AD{{0}}\t%AD{{1}}\t%DP[[\t%GQ\t%PL]] \n' -o {i}_{x}")
+  Log          <- "query78f" ;Ol<-paste0(here('QTLseqR/logD/'),Log,".out");Oe<-paste0(here('QTLseqR/logD/'),Log,".err")
+  bsub_cmd     <- glue("bsub -n 8 -o {Ol} -e {Oe} {cmd}")
+  #system(bsub_cmd)
+  }
+}
+```
+
+##Calculate AF over all pools
+```{r, eval=FALSE}
+chrs   <- c("chr1","chr2","chr3","chr4","chr5","chr6","chr7","chr8","chr9","chr10","chr11","chr12","chr13","chr14","chr15","chr16","chr17","chr18","chr19","chr20","chr21","chr22","chr23","chr24","chr25","chr26","chr27","chr28","chr29")
+dt <-  data.table('s1CHROM'=character(),'s1POS'=integer(),'s1REF'=character(),'s1ALT'=character(),'s1AD0'=integer(),'s1AD1'=integer(),'s1DP'=integer(),'s1GQ'=character(),'s1PL'=character(),'p1CHROM'=character(),'p1POS'=integer(),'p1REF'=character(),'p1ALT'=character(),'p1AD0'=integer(),'p1AD1'=integer(),'p1DP'=integer(),'p1GQ'=character(),'p1PL'=character(),'Cpos'==integer())
+
+for (i in chrs){
+s1<- fread(paste0("bcfmpile_samples_CK51_01_chr25.vcf_", glue({i})), col.names = c('s1CHROM','s1POS','s1REF','s1ALT','s1AD0','s1AD1','s1DP','s1GQ','s1PL'))
+s1 <- s1[, "Cpos" := str_c(glue({i}), s1POS, sep=".")]
+setkey(s1, Cpos)
+p1 <- fread(paste0("bcfmpile_parents_CK51_01_chr25.vcf_", glue({i})), col.names = c('p1CHROM','p1POS','p1REF','p1ALT','p1AD0','p1AD1','p1DP','p1GQ','p1PL'))
+p1 <- p1[, "Cpos" := str_c(glue({i}), p1POS, sep=".")]
+setkey(p1, Cpos)
+dt1 <- s1[p1]
+rm(p1,s1)
+dt1 <- dt1[!is.na(s1CHROM) & !is.na(p1CHROM),]
+dt1 <- dt1[s1ALT!="."]
+dt <- rbind(dt,dt1,fill=TRUE )
+rm(dt1)
+}
+#SNP-indexper bulk = Alternate allele depth divided by Total read depth
+dt <-dt[,'s1SNPi':=s1AD1/s1DP][,'p1SNPi':=p1AD1/p1DP]
+
+#Reference allele frequency = Ref allele depth HighBulk + Ref allele depth LowBulk divided by the Total read depth for both bulks
+#in this case       REF_FRQ = ref allele depth parent + Ref allele depth xMalePool/  DPrussell + DPxMalePool
+dt <-dt[,'REF_FRQ':=((s1AD0+p1AD0)/(s1DP+p1DP))]
+
+#delta(SNP-index) = SNP-indexHighBulk minus SNP-indexLowBulk
+dt<-dt[,'deltaSNP':=s1SNPi-p1SNPi]
+#sapply(dt,class)
+
+fwrite(dt, file="CK51_01_fullpool_dt.csv", append=FALSE)
+rm(dt)
+```
+
+```{r group for analysis rename for QTLseqR}
+ck <- fread("CK51_01_fullpool_dt.csv")
+ck<-ck[,.(s1CHROM,s1POS,s1REF,s1ALT,s1AD0,s1AD1,s1DP,s1GQ,s1PL,s1SNPi,p1AD0,p1AD1,p1DP,p1GQ,p1PL,p1SNPi,REF_FRQ,deltaSNP)]
+##low=sample,  high=parent
+ck_nofilt <-setnames(ck, c('s1CHROM','s1POS','s1REF','s1ALT','p1AD0','p1AD1','p1DP','p1GQ','p1PL','p1SNPi','s1AD0','s1AD1','s1DP','s1GQ','s1PL','s1SNPi','REF_FRQ','deltaSNP'), c('CHROM','POS','REF','ALT','AD_REF.LOW','AD_ALT.LOW','DP.LOW','GQ.LOW','PL.LOW','SNPindex.LOW','AD_REF.HIGH','AD_ALT.HIGH','DP.HIGH','GQ.HIGH','PL.HIGH','SNPindex.HIGH','REF_FRQ','deltaSNP'))
+```
+
+```{r filter}
+ck <- filterSNPs(SNPset = ck_nofilt, refAlleleFreq = 0.10, minTotalDepth = 30, maxTotalDepth = 100, depthDifference = 100, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
+
+```
+
+```{r depth plot, include=TRUE, fig.show="hold", fig.width=3, fig.height=3}
+ggplot(data = ck) +geom_histogram(aes(x = DP.HIGH + DP.LOW)) +ggtitle("CK51_01") #+xlim(0,1000)
+```
+
+```{r ref frequency, include=TRUE, fig.show="hold", fig.width= 3, fig.height=3}
+ggplot(data = ck) +geom_histogram(aes(x = REF_FRQ))+ggtitle("CK51_01")
+```
+
+
+```{r QTLseqAnalysis}
+ck_qtl <- runQTLseqAnalysis(ck,windowSize = 2e6, popStruc = "F1", bulkSize = c(3,63), replications = 10000, intervals = c(95, 99))
+```
+
+```{r GprimeAnalysis}
+ck_qtl <- runGprimeAnalysis(ck_qtl, windowSize = 2e6, outlierFilter = "deltaSNP", filterThreshold = 0.4)
+```
+
+```{r plotGprimeDist, include=TRUE, fig.show="hold", fig.width= 5, fig.height=3}
+ck_Hampel_filt <- plotGprimeDist(SNPset = ck_qtl, outlierFilter = "Hampel")+ggtitle("CK51_01")
+ck_Hampel_filt
+```
+
+```{r plotGprimeDist deltaSNP outlier, fig.show="hold", fig.width= 5, fig.height=3}
+ck_deltaSNP_filt <- plotGprimeDist(SNPset = ck_qtl, outlierFilter = "deltaSNP", filterThreshold = 0.4) +ggtitle("CK51_01")
+ck_deltaSNP_filt
+```
+
+```{r plot QTLstats nSNPs, eval=FALSE, include=FALSE, fig.width= 20}
+ck_plotQTLS <- plotQTLStats(SNPset = ck_qtl, var = "nSNPs")+ggtitle("CK51_01")
+ck_plotQTLS
+```
+
+
+```{r plot QTLstats deltaSNP, include=TRUE, fig.width= 20}
+ck_plotQTLSdelta <- plotQTLStats(SNPset = ck_qtl, var = "deltaSNP", plotIntervals = TRUE)+ggtitle("CK51_01")
+ck_plotQTLSdelta
+```
+#, include=TRUE, fig.width= 3, fig.height=3
+```{r plotQTLstats Gprime, include=TRUE, fig.width= 20}
+ck_plotgp <- plotQTLStats(SNPset = ck_qtl, var = "Gprime", plotThreshold = TRUE, q = 0.01)+ggtitle("CK51_01")
+ggsave("Gplot_CK51_01.png", plot = ck_plotgp, width = 35, height = 12, units = c("cm"), dpi = 320)
+ck_plotgp
+```
+
+```{r}
+ckqtl <- getQTLTable(SNPset = ck_qtl, method = "Gprime", alpha = 0.01, export=FALSE)
+ckqtl
+```
+

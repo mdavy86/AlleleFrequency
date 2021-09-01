@@ -58,10 +58,10 @@ rm(ER,ER5)
 
 ```{r}
 #male pool parents are all the same for each pool e.g A1, B2 etc. unless adding multiple copies of each.
-#Russell_tp_bams <- Rualn_bams[PedigreeItem == 'CK02_04' | PedigreeItem == 'CK06_01' | PedigreeItem == 'CK09_06'| PedigreeItem == 'CK13_02'| PedigreeItem =='CK20_01'| PedigreeItem =='CK51_06'| PedigreeItem =='Russell'][, `:=` ("pool_parent"= 'Russell', 'vcf' = paste(PedigreeItem, '_chr25_pile.vcf.gz',sep=""))]# only found "CK06_01","CK20_01","CK51_06". missing 'CK02_04', 'CK13_02','CK09_06'.
+Russell_tp_bams <- Rualn_bams[PedigreeItem == 'CK02_04' | PedigreeItem == 'CK06_01' | PedigreeItem == 'CK09_06'| PedigreeItem == 'CK13_02'| PedigreeItem =='CK20_01'| PedigreeItem =='CK51_06'| PedigreeItem =='Russell'][, `:=` ("pool_parent"= 'Russell', 'vcf' = paste(PedigreeItem, '_chr25_pile.vcf.gz',sep=""))]# only found "CK06_01","CK20_01","CK51_06". missing 'CK02_04', 'CK13_02','CK09_06'.
 
 #adjusted russell to a single input as it should be.
-Russell_tp_bams <- Rualn_bams[V1 =='ER10522_Russell'][, `:=` ("pool_parent"= 'Russell', 'vcf' = paste(PedigreeItem, '_chr25_pile.vcf.gz',sep=""))]
+Russell_bam <- Rualn_bams[V1 =='ER10522_Russell'][, `:=` ("pool_parent"= 'Russell', 'vcf' = paste(PedigreeItem, '_chr25_pile.vcf.gz',sep=""))]
 
 #Full pool parents these tables are also needed in the merge step but cant be used in a single table.
 CK02_01_tp_bams <- Rualn_bams[PedigreeItem=='CK02_01'| PedigreeItem=='CK15_03'| PedigreeItem=='CK17_02'| PedigreeItem=='CK20_01'| PedigreeItem=='Bejing #36'| PedigreeItem == 'CK51_01'][, `:=` ("pool_parent"= 'CK02_01', 'vcf' = paste(PedigreeItem, '_chr25_pile.vcf.gz',sep=""))]#Full pool parents CK02_01
@@ -75,14 +75,9 @@ CK51_09_tp_bams <- Rualn_bams[PedigreeItem=='CK51_09'| PedigreeItem=='CK02_04'| 
 parent_bams <- rbindlist(list(Russell_tp_bams, CK02_01_tp_bams, CK10_02_tp_bams, CK19_03_tp_bams, CK20_01_tp_bams, CK22_03_tp_bams, CK23_08_tp_bams, CK51_01_tp_bams, CK51_09_tp_bams))
 
 parent_bams[, "psymlink_dir" := "/powerplant/workspace/hrtcdf/github/FSTs/parentpools"]
-parent_bams <- parent_bams[, "pbams" := paste0(er5,PedigreeItem,reference, ext, sep="")]
-#file.symlink(unique(parent_bams$pathandfile), here('QTLseqR'))
-```
+parent_bams <- parent_bams[er5=="ER10508_" |er5=="ER10522_",][, "pbams" := paste0(er5,PedigreeItem,reference, ext, sep="")]
 
-```{r}
-#male pool parents are all the same for each pool e.g A1, B2 etc. unless adding multiple copies of each.
-##Russell_tp_bams_single <- Rualn_bams[V1 == 'ER10522_CK02_04' | V1 == 'ER10522_CK06_01' | V1 == 'ER10522_CK09_06'| V1 == 'ER10522_CK13_02'| #V1 =='ER10522_CK20_01'| V1 =='ER10522_CK51_06'| V1 =='ER10522_Russell'][, `:=` ("pool_parent"= 'Russell', 'vcf' = paste(PedigreeItem, #'_chr25_pile.vcf.gz',sep=""))]# only found "CK06_01","CK20_01","CK51_06". missing 'CK02_04', 'CK13_02','CK09_06'.
-#Russell_tp_bams_x <- Russell_tp_bams_single[c(1,2,3,4,4,4,4,4,4,4)]
+#file.symlink(unique(parent_bams$pathandfile), here('QTLseqR'))
 ```
 
 ```{r index}
@@ -92,7 +87,7 @@ for (i in bamin){
 cmd        <- glue::glue("samtools index {i}")
 Log          <- "80" ;Ol<-paste0(here('QTLseqR/logD/'),Log,".out");Oe<-paste0(here('QTLseqR/logD/'),Log,".err")
 bsub_cmd     <- glue("bsub -n 8 -o {Ol} -e {Oe} {cmd}")
-system(bsub_cmd)
+#system(bsub_cmd)
 }
 ```
 
@@ -146,8 +141,9 @@ system(bsub_cmd)
 ```
 
 ```{r run bcftools mpileup for chr25}
+#-r 'chr25'
 submit_mpileup <- function(reference = "*.fa.gz", output = c(), bamfiles = c(), job.init = "asub", job.opts = "-q normal") {
-  cmd          <- "bcftools mpileup -B -I -Q 20 -f {reference} --excl-flags 'UNMAP,SECONDARY,QCFAIL,DUP'  -r 'chr25' -a {mpileuptags} {bamfiles} -Ou | bcftools call -f {bcfcalltags} -p {pvalThres} -m -A -Oz -o {output} && bcftools index {output}" 
+  cmd          <- "bcftools mpileup -B -I -Q 20 -f {reference} --excl-flags 'UNMAP,SECONDARY,QCFAIL,DUP' -a {mpileuptags} {bamfiles} -Ou | bcftools call -f {bcfcalltags} -p {pvalThres} -m -A -Oz -o {output} && bcftools index {output}" 
   tmpf         <- tempfile(pattern = "submit_mileup.", fileext = ".sh")
   writeLines(text = c(glue(cmd)), con = tmpf)
   submit       <- "{job.init} {job.opts} {tmpf}"
@@ -158,27 +154,7 @@ bcfcalltags    <- "GQ,GP"
 pvalThres      <- 0.99
 PedigreeItem   <- parent_bams[, unique(pool_parent)]
 bamfiles       <- parent_bams[, unique(paste0(mrgedparents, "_sort.bam"))]
-output         <- paste("bcfmpile_parents", PedigreeItem, "chr25.vcf", sep = "_")
-reference      <- dir("/workspace/hrards/projects/hrtcdf/genome/fasta", pattern = ".*\\.gz$", full.names = TRUE)
-file.exists(bamfiles)
-file.exists(reference)
-submit_mpileup(reference = reference, output = output, bamfiles = bamfiles)
-```
-
-```{r delete after run bcftools mpileup for chr25}
-submit_mpileup <- function(reference = "*.fa.gz", output = c(), bamfiles = c(), job.init = "asub", job.opts = "-q normal") {
-  cmd          <- "bcftools mpileup -B -I -Q 20 -f {reference} --excl-flags 'UNMAP,SECONDARY,QCFAIL,DUP'  -r 'chr25' -a {mpileuptags} {bamfiles} -Ou | bcftools call -f {bcfcalltags} -p {pvalThres} -m -A -Oz -o {output} && bcftools index {output}" 
-  tmpf         <- tempfile(pattern = "submit_mileup.", fileext = ".sh")
-  writeLines(text = c(glue(cmd)), con = tmpf)
-  submit       <- "{job.init} {job.opts} {tmpf}"
-  system(glue(submit), intern = TRUE)
-}
-mpileuptags    <- "DP,AD,SP,INFO/AD"
-bcfcalltags    <- "GQ,GP"
-pvalThres      <- 0.99
-PedigreeItem   <- "Russell"
-bamfiles       <- 'Russell_mrgdparents_sort.bam'
-output         <- paste("bcfmpile_parents_Russell_chr25.vcf")
+output         <- paste("bcfmpile_parents", PedigreeItem, ".vcf", sep = "_")
 reference      <- dir("/workspace/hrards/projects/hrtcdf/genome/fasta", pattern = ".*\\.gz$", full.names = TRUE)
 file.exists(bamfiles)
 file.exists(reference)
@@ -191,7 +167,7 @@ royDir <- "/workspace/hrards/projects/hrtcdf/10.alignments/bwa"
 outDir <- "/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR"
 mspoolfiles       <- dir(royDir, pattern = ".bam", full.names = TRUE, include.dirs = TRUE)
 
-file.symlink(mspoolfiles, outDir)
+#file.symlink(mspoolfiles, outDir)
 ```
 
 ```{r transform filenames to sample, lane and suffix for data.table from symlink}
@@ -226,10 +202,10 @@ infile  <- str_c(paste("I=", x, sep=""), sep="", collapse=" ")
 outfile <- paste({i}, "_picmrg_lowPSA.bam", sep="")
 
 file.exists(x)
-cmd         <- glue("java -jar /software/bioinformatics/picard-tools-2.9.4/picard.jar MergeSamFiles {infile} O={outfile}")
+cmd         <- glue("java -jar /software/bioinformatics/picard-tools-2.9.4/picard.jar MergeSamFiles --CREATE_INDEX {infile} O={outfile}")
 Log          <- "78" ;Ol<-paste0(here('QTLseqR/logD/'),Log,".out");Oe<-paste0(here('QTLseqR/logD/'),Log,".err")
 bsub_cmd     <- glue("bsub -n 8 -o {Ol} -e {Oe} {cmd}")
-system(bsub_cmd)
+#system(bsub_cmd)
 }
 ```
 
@@ -264,7 +240,7 @@ mpilepoolbams     <- mpilepoolbams[ftype==".bam",'s_' := "s_"]
 
 ```{r run bcftools mpileup for chr25 for QTLseqR}
 submit_mpileup <- function(reference = "*.fa.gz", output = c(), bamfiles = c(), job.init = "asub", job.opts = "-q normal") {
-  cmd          <- "bcftools mpileup -B -I -Q 20 -f {reference} --excl-flags 'UNMAP,SECONDARY,QCFAIL,DUP'  -r 'chr25' -a {mpileuptags} {bamfiles} -Ou | bcftools call -f {bcfcalltags} -p {pvalThres} -m -A -Oz -o {output} && bcftools index -f {output}" 
+  cmd          <- "bcftools mpileup -B -I -Q 20 -f {reference} --excl-flags 'UNMAP,SECONDARY,QCFAIL,DUP' -a {mpileuptags} {bamfiles} -Ou | bcftools call  -f {bcfcalltags} -p {pvalThres} -m -v -A -Oz -o {output} && bcftools index -f {output}" 
   tmpf         <- tempfile(pattern = "submit_mileup.", fileext = ".sh")
   writeLines(text = c(glue(cmd)), con = tmpf)
   submit       <- "{job.init} {job.opts} {tmpf}"
@@ -274,8 +250,8 @@ mpileuptags    <- "DP,AD,SP,INFO/AD"
 bcfcalltags    <- "GQ,GP"
 pvalThres      <- 0.99
 PedigreeItem   <- mpilepoolbams[ftype==".bam",sample]
-bamfiles       <- mpilepoolbams[ftype==".bam",paste0(s_, V1)]
-output         <- paste("bcfmpile_samples", PedigreeItem, "chr25.vcf", sep = "_")
+bamfiles       <- mpilepoolbams[ftype==".bam",paste0("s_", V1)]
+output         <- paste("bcfmpile_samples_", PedigreeItem, ".vcf", sep = "")
 reference      <- dir("/workspace/hrards/projects/hrtcdf/genome/fasta", pattern = ".*\\.gz$", full.names = TRUE)
 file.exists(bamfiles)
 file.exists(reference)
@@ -291,3 +267,45 @@ bai <- grep(paste("*.bai"), list.files(path="."), invert=FALSE, value=TRUE)
 #file.remove(r1, bamin1, bamin2, bai)
 ```
 
+***make sure the correct russell is used for the parent***
+
+```{r index}
+cmd          <- "samtools index 'ER10522_Russell_Russell_V2a.chromosomes.and.unassigned.fsa.bam'"
+Log          <- "i273" ;Ol<-paste0(here('QTLseqR/logD/'),Log,".out");Oe<-paste0(here('QTLseqR/logD/'),Log,".err")
+bsub_cmd     <- glue("bsub -n 8 -o {Ol} -e {Oe} {cmd}")
+system(bsub_cmd)
+```
+
+
+```{r sort}
+cmd       <- glue::glue("samtools sort -o 's_ER10522_Russell_Russell_V2a.chromosomes.and.unassigned.fsa.bam' 'ER10522_Russell_Russell_V2a.chromosomes.and.unassigned.fsa.bam'")
+Log       <- "s280";Ol<-paste0(here('QTLseqR/logD/'),Log,".out");Oe<-paste0(here('QTLseqR/logD/'),Log,".err")
+bsub_cmd  <- glue("bsub -n 8 -o {Ol} -e {Oe} {cmd}")
+system(bsub_cmd)
+```
+
+```{r index}
+cmd       <- glue::glue("samtools index 's_ER10522_Russell_Russell_V2a.chromosomes.and.unassigned.fsa.bam'")
+Log       <- "i287";Ol<-paste0(here('QTLseqR/logD/'),Log,".out");Oe<-paste0(here('QTLseqR/logD/'),Log,".err")
+bsub_cmd  <- glue("bsub -n 8 -o {Ol} -e {Oe} {cmd}")
+system(bsub_cmd)
+```
+
+```{r run bcftools mpileup for chr25 for QTLseqR}
+submit_mpileup <- function(reference = "*.fa.gz", output = c(), bamfiles = c(), job.init = "asub", job.opts = "-q normal") {
+  cmd          <- "bcftools mpileup -B -I -Q 20 -f {reference} --excl-flags 'UNMAP,SECONDARY,QCFAIL,DUP' -a {mpileuptags} {bamfiles} -Ou | bcftools call  -f {bcfcalltags} -p {pvalThres} -m -v -A -Oz -o {output} && bcftools index -f {output}" 
+  tmpf         <- tempfile(pattern = "submit_mileup.", fileext = ".sh")
+  writeLines(text = c(glue(cmd)), con = tmpf)
+  submit       <- "{job.init} {job.opts} {tmpf}"
+  system(glue(submit), intern = TRUE)
+}
+mpileuptags    <- "DP,AD,SP,INFO/AD"
+bcfcalltags    <- "GQ,GP"
+pvalThres      <- 0.99
+bamfiles       <- 's_ER10522_Russell_Russell_V2a.chromosomes.and.unassigned.fsa.bam'
+output         <- 'Russell_for_malepools.vcf.gz'
+reference      <- dir("/workspace/hrards/projects/hrtcdf/genome/fasta", pattern = ".*\\.gz$", full.names = TRUE)
+file.exists(bamfiles)
+file.exists(reference)
+submit_mpileup(reference = reference, output = output, bamfiles = bamfiles)
+```
