@@ -1,0 +1,166 @@
+---
+title: "qtlseqr"
+author: "Casey Flay"
+date: "12/08/2021"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(RLinuxModules)
+library(data.table)
+library(glue) 
+library(tidyverse)
+library(here)
+library(QTLseqr)
+setDTthreads(1)
+module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 perlbrew/0.76")
+knitr::opts_chunk$set(echo = FALSE, include=FALSE, warning = TRUE)
+```
+
+```{r transform filenames to sample, lane and suffix for data.table from symlink}
+compare_mpool  <- as.data.table(grep(paste("malepool_compare.csv"), list.files(path="."), invert=FALSE, value=TRUE))
+compare_mpool  <- compare_mpool[, V2 := str_replace_all(V1, "_malepool_compare.csv", "&_malepool_compare.csv")
+                  ][, V2 := str_replace_all(V2, ".csv" , "&.csv")
+                  ][, c("V2", "V3", "V4") := tstrsplit(V2, "&", fixed=TRUE)]
+```
+
+```{r group samples against parent pools and rename for QTLseqR and assign columns for QTLseqR}
+obj_names <- compare_mpool[,V2]
+my_files  <- compare_mpool[,V1]
+
+#70gb run below, only run when reduction filters are inplace
+for(i in seq(along=my_files)) {
+  assign(obj_names[i], fread(my_files[i]))
+}
+
+#F12G13 <- fread('F12G13_malepool_compare.csv')#test
+#F12E11 <- fread('F12H14_malepool_compare.csv')#test
+#obj_names <- as.data.table(c("F12G13", "F12E11"))#test
+#obj_names <- obj_names[,V1]
+
+#relabel samples for qtlseqR
+samplesold <- c('s1CHROM','s1POS','s1REF','s1ALT','r1AD0','r1AD1','r1DP','r1GQ','r1PL','r1SNPi','s1AD0','s1AD1','s1DP','s1GQ','s1PL','s1SNPi','REF_FRQ','deltaSNP')
+samplesnew <-c('CHROM','POS','REF','ALT','AD_REF.LOW','AD_ALT.LOW','DP.LOW','GQ.LOW','PL.LOW','SNPindex.LOW','AD_REF.HIGH','AD_ALT.HIGH','DP.HIGH','GQ.HIGH','PL.HIGH','SNPindex.HIGH','REF_FRQ','deltaSNP')
+
+#Main paradigm is using assign() to write an object, then you need to retrieve it without using quotes. The other issue is naming all the objects, and using some kind of alphanumeric coding convention
+for(i in seq(along=obj_names)) {
+  dt_name <- get(obj_names[i], envir = .GlobalEnv)
+  assign(obj_names[i], setnames(dt_name, glue("{samplesold}"), glue("{samplesnew}")))
+}
+```
+
+```{r clean columns and change to chr01 for ggplot to assemble in the right order}
+
+for(i in seq(along=obj_names)) {
+  dt_name <- get(obj_names[i], envir = .GlobalEnv)
+  assign(obj_names[i], dt_name[, `:=` ('p1CHROM'=NULL, 'p1POS'=NULL, 'p1REF'=NULL, 'p1ALT'=NULL, 'p1AD0'=NULL, 'p1AD1'=NULL, 'p1DP'=NULL, 'p1GQ'=NULL, 'p1PL'=NULL, 'V19'=NULL)])
+}
+
+#Russell <- Russell[, `:=` ('p1CHROM'=NULL,'p1POS'=NULL,'p1REF'=NULL,'p1ALT'=NULL,'p1AD0'=NULL,'p1AD1'=NULL,'p1DP'=NULL,'p1GQ'=NULL,'p1PL'=NULL,'V19'=NULL)]
+
+for(i in seq(along=obj_names)) {
+  assign(obj_names[i], get(obj_names[i], envir = .GlobalEnv)[, "CHROM" := as.factor(CHROM)])
+}
+#sapply(F12G13, class)
+
+chrs <- c("chr1", "chr2", "chr3",  "chr4",  "chr5",  "chr6",  "chr7",  "chr8",  "chr9", "chr10", "chr11", "chr12", "chr13", "chr14", "chr15", "chr16", "chr17", "chr18", "chr19",  "chr20", "chr21", "chr22", "chr23", "chr24", "chr25", "chr26", "chr27", "chr28", "chr29")
+
+for(i in seq(along=obj_names)) {
+  dt_name <- get(obj_names[i], envir = .GlobalEnv)
+  assign(obj_names[i], dt_name[, CHROM := fct_relevel(dt_name[,CHROM], chrs, after = Inf)])
+}
+#ck0201<-setnames(ck0201, glue("{samplesold}"),glue("{samplesnew}"))
+```
+
+```{r filter, echo=TRUE}
+for(i in seq(along=obj_names)) {
+  dt_name <- get(obj_names[i], envir = .GlobalEnv)
+  assign(obj_names[i], filterSNPs(SNPset = dt_name, refAlleleFreq = 0.05, minTotalDepth = 60, maxTotalDepth = 160, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = FALSE))
+}
+#ck0201 <- filterSNPs(SNPset = ck0201, refAlleleFreq = 0.05, minTotalDepth = 40, maxTotalDepth = 85, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
+```
+
+```{r depth plot, include=TRUE, fig.show="hold", fig.width=3, fig.height=3, eval=TRUE}
+for(i in seq(along=obj_names)) {
+  dt_name <- get(obj_names[i], envir = .GlobalEnv)
+  print(ggplot(data = dt_name) +geom_histogram(aes(x = DP.HIGH + DP.LOW)))+ggtitle(obj_names[i])+ylim(0,120000)
+}
+```
+
+```{r ref frequency, include=TRUE, fig.show="hold", fig.width= 3, fig.height=3, eval=TRUE}
+for(i in seq(along=obj_names)) {
+  dt_name <- get(obj_names[i], envir = .GlobalEnv)
+  print(ggplot(data = dt_name) +geom_histogram(aes(x = REF_FRQ))+ggtitle(obj_names[i]))
+}
+```
+
+```{r QTLseqAnalysis}
+for(i in seq(along=obj_names)) {
+  dt_name <- get(obj_names[i], envir = .GlobalEnv)
+  assign(obj_names[i], runQTLseqAnalysis(dt_name,windowSize = 3e6, popStruc = "F1", bulkSize = c(10,10), replications = 10000, intervals = c(95, 99)))
+}
+
+#ck0201_qtl <- runQTLseqAnalysis(ck0201,windowSize = 3e6, popStruc = "F1", bulkSize = c(5,38), replications = 10000, intervals = c(95, 99))
+```
+
+```{r GprimeAnalysis}
+for(i in seq(along=obj_names)) {
+  dt_name <- get(obj_names[i], envir = .GlobalEnv)
+  assign(obj_names[i], runGprimeAnalysis(dt_name, windowSize = 2e6, outlierFilter = "deltaSNP", filterThreshold = 0.4))
+}
+```
+
+```{r plotGprimeDist, eval=TRUE, fig.show="hold", fig.width= 5, fig.height=3}
+for(i in seq(along=obj_names)) {
+  dt_name <- get(obj_names[i], envir = .GlobalEnv)
+  print(plotGprimeDist(SNPset = dt_name, outlierFilter = "Hampel")+ggtitle(obj_names[i]))
+}
+```
+
+```{r plotGprimeDist deltaSNP outlier, eval=TRUE, fig.show="hold", fig.width= 5, fig.height=3}
+for(i in seq(along=obj_names)) {
+  dt_name <- get(obj_names[i], envir = .GlobalEnv)
+  print(plotGprimeDist(SNPset = dt_name, outlierFilter = "deltaSNP", filterThreshold = 0.4) +ggtitle(obj_names[i]))
+}
+```
+
+```{r plot QTLstats nSNPs, eval=FALSE, include=TRUE, fig.width= 20}
+for(i in seq(along=obj_names)) {
+  dt_name <- get(obj_names[i], envir = .GlobalEnv)
+  print(plotQTLStats(SNPset = dt_name, var = "nSNPs") +ggtitle(obj_names[i]))+ylim(0,25000)
+}
+
+```
+
+```{r plot QTLstats deltaSNP, eval=FALSE, include=TRUE, fig.width= 20}
+for(i in seq(along=obj_names)) {
+  dt_name <- get(obj_names[i], envir = .GlobalEnv)
+  print(plotQTLStats(SNPset = dt_name, var = "deltaSNP", plotIntervals = TRUE) +ggtitle(obj_names[i]))
+}
+```
+
+```{r males plotQTLstats Gprime, eval=TRUE warnings=TRUE, include=TRUE, fig.show="hold", fig.width= 20}
+#trying var= "negLog10Pval" instead of "Gprime"
+for(i in seq(along=obj_names)) {
+  dt_name <- get(obj_names[i], envir = .GlobalEnv)
+  print(plotQTLStats(SNPset = dt_name, var = "negLog10Pval", plotThreshold = TRUE, q = 0.01) + labs(title = obj_names[i]) + theme(plot.title = element_text(size = 18, hjust = 0.5)))
+ggsave(paste0(obj_names[i],"_plotgp.png"), plot = last_plot(), width = 35, height = 12, units = c("cm"), dpi = 72)
+}
+
+```
+
+```{r write snp sites, eval=FALSE}
+fwrite(getQTLTable(SNPset = ck0201_qtl, method = "Gprime", alpha = 0.05, export=FALSE),file="ck0201_qtl.csv")
+fwrite(getQTLTable(SNPset = ck1002_qtl, method = "Gprime", alpha = 0.05, export=FALSE), file="ck1002_qtl.csv")
+
+```
+
+```{r snp sites, eval=FALSE}
+ck0201_qtl <- fread("ck0201_qtl.csv")
+ck1002_qtl <- fread("ck1002_qtl.csv")
+
+```
+
