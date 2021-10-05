@@ -195,60 +195,78 @@ ggsave(paste0(obj_names[i],"_plotgp.png"), plot = last_plot(), width = 35, heigh
 #ck0201_plotgp <- ck0201_plotgp + labs(title = "CK02_01") + theme(plot.title = element_text(size = 18, hjust = 0.5))
 ```
 
-```{r ggplot qtls, eval=TRUE, warnings=FALSE, include=TRUE, fig.show="hold", fig.width= 15}
+```{r Gprime ggplot qtls, eval=TRUE, warnings=FALSE, include=TRUE, fig.show="hold", fig.width= 20}
 for(i in seq(along=obj_names)) {
 dt_name   <- as.data.table(get(obj_names[i], envir = .GlobalEnv))
 
 dt_name   <- assign(obj_names[i], dt_name[,"POSmb" := POS/1000000])
-quant     <- as.numeric(quantile(dt_name[,negLog10Pval], probs = 0.99, na.rm=T))#probs0.999 gives top 0.001% of SNPs
-dt_name   <- assign(obj_names[i], dt_name[negLog10Pval>quant, "top":="Top 0.01%"][negLog10Pval<quant, top:="Remaining SNPs"])
-threshold <- min(dt_name[qvalue<0.05, negLog10Pval])
-threshold[!is.finite(threshold)] <- 0
-#dt_name <- dt_name[qvalue<0.05,]
-#fwrite(dt_name,file="allelefreq_sig_snps.csv", append=T)
+quant     <- as.numeric(quantile(dt_name[,Gprime], probs = 0.99, na.rm=T))#probs0.99 gives top 0.01% of SNPs
+dt_name   <- assign(obj_names[i], dt_name[Gprime>quant, "top":="Top 1 % SNPs"][Gprime<quant, top:="Remaining SNPs"])
+thresholdnumber <- min(dt_name[qvalue<0.05, Gprime])
+thresholdnumber[is.finite(thresholdnumber)] <- round(thresholdnumber, digits = 3)
+thresholdnumber[!is.finite(thresholdnumber)] <- 0
+Threshold <- data.frame(Threshold = factor(thresholdnumber) )
 
-if  (threshold==0){
+if  (thresholdnumber==0){
     #if there is a significant threshold to plot apply hline threshold to graph
-p <- ggplot(data=dt_name, aes(x=POSmb, y=negLog10Pval))+
+p <- ggplot(data=dt_name, aes(x=POSmb, y=Gprime))+
   labs(title = obj_names[i]) +
-  geom_point(aes(color=factor(dt_name[,top])),size=0.5, na.rm=T)+
-  scale_color_manual(name="top",breaks = c("Top 0.01%","Remaining SNPs"),values=c("chartreuse3","black"))+
-  scale_x_continuous(limits=c(0, 20), breaks=c(0, 5, 10, 15))+
+  geom_point(aes(color=factor(dt_name[,top])),size=0.01, na.rm=T)+
+  scale_color_manual(name="Top SNPs",breaks = c("Top 1 % SNPs","Remaining SNPs"),values=c("chartreuse3","black"))+
+  scale_x_continuous(limits=c(0, 25), breaks=c(5, 15))+
+        theme(plot.title =element_text(color = "grey20", size = 10, angle = 0, hjust = .5, vjust = 0, face = "plain"),
+        legend.text=element_text(color = "grey20", size = 7, angle = 0, hjust = 0, vjust = .5, face = "plain"),
+        legend.title =element_text(color = "grey20", size = 8, angle = 0, hjust = 0, vjust = 0, face = "plain"),
+        axis.text.x = element_text(color = "grey20", size = 7, angle = 0, hjust = .5, vjust = 0, face = "plain"),
+        axis.text.y = element_text(color = "grey20", size = 7, angle = 0, hjust = 0, vjust = 0, face = "plain"),  
+        axis.title.x = element_text(color = "grey20", size = 8, angle = 0, hjust = .5, vjust = 0, face = "plain"),
+        axis.title.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 0, vjust = .5, face = "plain"))+
   xlab("Nucleotide Position")+  
-  ylab("-Log10 p-value")+
+  ylab("Gprime")+
   facet_wrap(~CHROM, nrow=3, ncol=10)
-  print(p)
-print(p)
+  #print(p)
+
 } else {
   #else apply graph with no threshold line
-  p <- ggplot(data=dt_name, aes(x=POSmb, y=negLog10Pval))+
+  p <- ggplot(data=dt_name, aes(x=POSmb, y=Gprime))+
   labs(title = obj_names[i]) +
-  geom_point(aes(color=factor(dt_name[,top])),size=0.5, na.rm=T)+
-  geom_hline(yintercept = threshold, linetype='dashed')+  
-  scale_color_manual(name="top",breaks = c("Top 0.01%","Remaining SNPs"),values=c("chartreuse3","black"))+
-  scale_x_continuous(limits=c(0, 20), breaks=c(0, 5, 10, 15))+
+  geom_point(aes(color=factor(dt_name[,top])),size=0.01, na.rm=T)+
+  scale_color_manual(name="Top SNPs",breaks = c("Top 1 % SNPs","Remaining SNPs"),values=c("chartreuse3","black"))+
+  scale_x_continuous(limits=c(0, 20), breaks=c(5, 15))+
+      theme(plot.title =element_text(color = "grey20", size = 10, angle = 0, hjust = .5, vjust = 0, face = "plain"),
+        legend.text=element_text(color = "grey20", size = 7, angle = 0, hjust = 0, vjust = .5, face = "plain"),
+        legend.title =element_text(color = "grey20", size = 8, angle = 0, hjust = 0, vjust = 0, face = "plain"),
+        axis.text.x = element_text(color = "grey20", size = 7, angle = 0, hjust = .5, vjust = 0, face = "plain"),
+        axis.text.y = element_text(color = "grey20", size = 7, angle = 0, hjust = 0, vjust = 0, face = "plain"),  
+        axis.title.x = element_text(color = "grey20", size = 8, angle = 0, hjust = .5, vjust = 0, face = "plain"),
+        axis.title.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 0, vjust = .5, face = "plain"))+
   xlab("Nucleotide Position")+  
-  ylab("-Log10 p-value")+
+  ylab("Gprime")+
+    geom_hline(aes(yintercept=thresholdnumber, linetype = Threshold ), Threshold)+
+    scale_linetype_manual(name = "Threshold (q=.05)", values = "dashed", labels = Threshold) +
   facet_wrap(~CHROM, nrow=3, ncol=10)
-  print(p)
+  #print(p)
 }
 
-ggsave(paste0(obj_names[i],"_plotgp.png"), plot = last_plot(), width = 20, height = 12, units = c("cm"), dpi = 320)
+ggsave(paste0(obj_names[i],"_Gprime_plotgp.png"), plot = last_plot(), width = 20, height = 12, units = c("cm"), dpi = 320)
 }
 ```
 
-```{r write threshold snps}
+```{r write top 1percent snps and sig snps so seperate plots can be made of each, eval=TRUE}
 for(i in seq(along=obj_names)) {
 dt_name <- as.data.table(get(obj_names[i], envir = .GlobalEnv))
-dt_name <- dt_name[qvalue<0.05,]
-dt_name <- dt_name[,"parent" := obj_names[i]]
-#clean up unneeded columns
+dt_name   <- dt_name[,"parent" := obj_names[i]]
 dt_name <- dt_name[, `:=` ("AD_REF.HIGH"=NULL, "AD_ALT.HIGH"=NULL, "DP.HIGH"=NULL, "GQ.HIGH"=NULL, "PL.HIGH"=NULL, "Cpos"=NULL,  "r1CHROM"=NULL,   "r1POS"=NULL, "r1REF"=NULL, "r1ALT"=NULL, "AD_REF.LOW"=NULL, "AD_ALT.LOW"=NULL, "DP.LOW"=NULL,  "GQ.LOW"=NULL, "PL.LOW"=NULL, "SNPindex.HIGH"=NULL, "SNPindex.LOW"=NULL, "REF_FRQ"=NULL, "deltaSNP"=NULL, "nSNPs"=NULL, "tricubeDeltaSNP"=NULL, "minDP"=NULL, "tricubeDP"=NULL, "CI_95"=NULL, "CI_99"=NULL, "G"=NULL)]
 
-fwrite(dt_name,file="allelefreq_sig_snps.csv", append=T)
+dt_name   <- dt_name[qvalue>0.05, "sig" := "nonsignificant"][qvalue<0.05, sig := "significant"]
+
+dt_name   <- dt_name[top=="Top 1 % SNPs" | sig=="significant",] #filter just top and significant
+fwrite(dt_name, file="top1percandsig_CK_snps.csv", append=T) #rename this chunk for A,BC,DE,FGHI runs
 }
 ```
 
+
+
 ```{r read threshold snps}
-threshold_snps <- fread("allelefreq_sig_snps.csv")
+threshold_snps <- fread("top1percandsig_CK_snps.csv")
 ```
