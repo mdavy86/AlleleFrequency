@@ -1,0 +1,415 @@
+---
+title: "QTLseqrPSAQTL"
+author: "Casey Flay"
+date: "07/10/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, include=FALSE, fig.width=12, fig.height=8, fig.path='Figs/')
+library(RLinuxModules)
+library(glue)
+library(here)
+library(data.table)
+library(tidyverse)
+library(stringr)
+library(ggplot2)
+library(magrittr)
+library(GenomicRanges)
+library(readr)
+library(cowplot)
+library(kableExtra)
+setDTthreads(1)
+module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 vcftools")
+```
+
+```{r vcf files of parents aligned to russell}
+raw_parents_tovcf     <- as.data.table(grep(pattern="ER105", list.files(path="/output/genomic/plant/Actinidia/chinensis/Resequencing/Alignments/Russell_V2a.chromosomes.and.unassigned"), invert=FALSE, value=TRUE))
+
+raw_parents_tovcf  <- raw_parents_tovcf[str_which(raw_parents_tovcf[,V1], ".bam$" ),]
+#raw_parents_tovcf  <- raw_parents_tovcf[V1!=str_subset(raw_parents_tovcf[,V1], "^s_ER105"),]
+
+raw_parents_tovcf  <- raw_parents_tovcf [, V2 := str_replace_all(V1, ".bam" , "&.bam")
+                ][, V2 := str_replace_all(V2, "522_" , "522_&")
+                ][, V2 := str_replace_all(V2, "508_" , "508_&")
+                ][, V2 := str_replace_all(V2, "_Russell" , "&_Russell")
+                ][, c("V3", "V4", "V5","V6") := tstrsplit(V2, "&", fixed=TRUE)]
+
+raw_parents_tovcf  <- raw_parents_tovcf[V4=='CK01_01_01_01' |V4=='CK02_04' |V4=='CK06_01' |V4=='CK09_06' |V4=='CK10_02' |V4=='CK10_05' |V4=='CK13_02' |V4=='CK15_03' |V4=='CK15_04' |V4=='CK16_01' |V4=='CK17_02' |V4=='CK20_01' |V4=='CK22_03' |V4=='CK26_01' |V4=='CK51_01' |V4=='CK51_06' |V4=='CK02_01' |V4=='CK09_11' |V4=='CK17_03' |V4=='CK18_01' |V4=='CK19_03' |V4=='CK23_08' |V4=='CK51_09' |V4=='Russell'] 
+
+
+raw_parents_tovcf <-  raw_parents_tovcf[, "dir1" := "/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/05.genetic_distances/"]
+
+raw_parents_tovcf <-  raw_parents_tovcf[, "solesample" :=  paste("solesample_", raw_parents_tovcf[, V4], "_bwamem.vcf", sep = "")]
+raw_parents_tovcf <-  raw_parents_tovcf[, "full" := paste0( "/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/05.genetic_distances/", solesample)]
+symlinkers <- paste0('/output/genomic/plant/Actinidia/chinensis/Resequencing/Alignments/Russell_V2a.chromosomes.and.unassigned/', raw_parents_tovcf$V1)
+#file.symlink(from=symlinkers, to=here('QTLseqR/10.QTLseqrPSAqtl/'))
+```
+
+```{r index, eval=FALSE}
+bamin          <- paste0(raw_parents_tovcf$V1)
+file.exists(bamin)
+for (i in bamin){
+cmd        <- glue::glue("samtools index {i}")
+Log          <- "80" ;Ol<-paste0(here('QTLseqR/logD/'),Log,".out");Oe<-paste0(here('QTLseqR/logD/'),Log,".err")
+bsub_cmd     <- glue("bsub -n 8 -o {Ol} -e {Oe} {cmd}")
+#system(bsub_cmd)
+}
+```
+
+```{r run bcftools mpileup, eval=FALSE}
+raw_parents_tovcf <-  raw_parents_tovcf[, "solesample" :=  paste("solesample_", raw_parents_tovcf[, V4], "_bwamem.vcf.gz", sep = "")]
+submit_mpileup <- function(reference = "*.fa.gz", output = c(), bamfiles = c(), job.init = "asub", job.opts = "-q normal") {
+  cmd          <- "bcftools mpileup -B -I -Q 20 -f {reference} -a {mpileuptags} {bamfiles} -Ou  |bcftools call -f {bcfcalltags} -p {pvalThres} -m -Oz -o {output} && bcftools index {output}" 
+  tmpf         <- tempfile(pattern = "submit_mileup.", fileext = ".sh")
+  writeLines(text = c(glue(cmd)), con = tmpf)
+  submit       <- "{job.init} {job.opts} {tmpf}"
+  system(glue(submit), intern = TRUE)
+}
+mpileuptags    <- "DP,AD,SP,INFO/AD,INFO/ADF,INFO/ADR,INFO/SCR"
+bcfcalltags    <- "GQ,GP"
+pvalThres      <- 0.99
+bamfiles       <- raw_parents_tovcf[, V1]
+output         <- raw_parents_tovcf[,solesample]
+reference      <- dir("/workspace/hrards/projects/hrtcdf/genome/fasta", pattern = ".*\\.gz$", full.names = TRUE)
+file.exists(bamfiles)
+file.exists(reference)
+#submit_mpileup(reference = reference, output = output, bamfiles = bamfiles)
+```
+
+```{bash, eval=FALSE}
+head '/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/10.QTLseqrPSAqtl/asub_18633039.err/1.err'
+tail '/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/10.QTLseqrPSAqtl/asub_18633039.err/1.err'
+```
+
+```{r data from vcfs to data table}
+#ALT{0} retrieves the first alternate allele while AD{0} retrieves the depth for the reference with AD{1} the depth for the first alternate. column names adjusted to make ALT1 the same as AD1.
+
+
+raw_parents_tovcf <-  raw_parents_tovcf[1,]#remove this when single file test done.
+
+my_files  <- raw_parents_tovcf$full
+
+fun1 <- function (my_files){fread(cmd=paste("bcftools query -f'[%SAMPLE]\t%CHROM \t%POS \t%REF \t%ALT \t%ALT{0} \t%ALT{1} \t%DP \t%AD \t%AD{0} \t%AD{1} \t%AD{2}\n'", my_files), col.names=c('SMP','CHROM','POS','REF','ALT','ALT1', 'ALT2','DP','AD','REFD','AD1','AD2'), fill=T)
+ } 
+rawparentsnps<- lapply(X=my_files, FUN=fun1)
+
+rawparentsnps<- do.call(rbind, rawparentsnps)
+rawparentsnps <- rawparentsnps[ALT!=".",][!is.na(POS),]
+
+fwrite(rawparentsnps, file="rawparentsnps.csv", append=FALSE)
+
+#tm0s2 <- rawparentsnps[POS %between% c(6185769, 6188976),]#subset
+```
+#error comment [query_vcf] Error: cannot write to standard output, 
+#Avoidable 33.330 seconds. This file is very unusual: it ends abruptly without a final newline, and also its size is a multiple of 4096 bytes. Please properly end the last row with a newline using for example 'echo >> file' to avoid this  time to copy. 
+#Error: cannot allocate vector of size 2.8 Gb
+
+
+
+
+
+
+
+
+
+#below this line is copied from another project to be replicated here.
+```{r data for plot binned chr10, fig.width=12, fig.height=12}
+dt <- fread("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/10.QTLseqrPSAqtl/rawparentsnps.csv")
+dt <-dt[, "chpos":= paste0(CHROM,POS)]
+setkey(dt, chpos)
+snps <- fread("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/top1percandsig_CK_snps.csv")
+snps <-snps[, "chpos":= paste0(CHROM,POS), key=chpos]
+setkey(snps, chpos)
+t<- cbind(dt,snps)
+
+right_hand <- function(dt, )  {
+  IRanges::findOverlapPairs(query=dt, subject=bed0) %>% second() %>% names()
+}    
+snp_bed <- function(vcf, bed0) {           
+  bed0   <- IRanges::IRanges(start = bed0$V2, end = bed0$V3, names = bed0$V1)
+  return(vcf[, gene_name0 := right_hand(POS, bed0), by = inrange(POS, start(bed0), end(bed0))][!is.na(gene_name0)])
+}
+
+SNPs_ingenes <- snp_bed(tolmatrix3, bed0) #add bedsites to matrix.
+test1 <- SNPs_ingenes[POS %between% c(6185769, 6188976),]
+#number of sites with individuals in common, #sum SNPno_inall6Tol by gene name
+SNPs_ingenes <- SNPs_ingenes[, "nucCount" := 1][, "nucNumber" := (sum(nucCount, na.rm = FALSE)), by=gene_name0]
+
+#code sites with 5 tol individuals in common, calculate the percentage of alleles the same among tolerant individuals by gene name
+SNPs_ingenes <- SNPs_ingenes[, "percent_identical_SNPs" := (sum(SNPno_inall6Tol, na.rm = TRUE)/nucNumber*100), by=gene_name0]  
+SNPs_ingenes <- SNPs_ingenes[, "percent_identical_inDels" := (sum(inDelno_inall6Tol, na.rm = TRUE)/nucNumber*100), by=gene_name0]
+SNPs_ingenes <- SNPs_ingenes[, "percent_dissimilar_SNPs" := (sum(dissimilar_SNPs, na.rm = TRUE)/nucNumber*100), by=gene_name0]
+SNPs_ingenes <- SNPs_ingenes[, "percent_dissimilar_inDels" := (sum(dissimilar_inDels, na.rm = TRUE)/nucNumber*100), by=gene_name0]
+test2 <- SNPs_ingenes[POS %between% c(6185769, 6188976),]
+
+ac10 <- SNPs_ingenes[,.(POS, gene_name0, percent_identical_SNPs)][, SNP_type := "identical_SNPs"]
+ac10 <- setnames(ac10, c("POS", "gene_name0", "PercentSNPs", "SNP_type"))
+bc10 <- SNPs_ingenes[,.(POS, gene_name0, percent_dissimilar_SNPs)][, SNP_type := "dissimilar_SNPs"]
+bc10 <- setnames(bc10, c("POS", "gene_name0", "PercentSNPs", "SNP_type"))
+cc10 <- SNPs_ingenes[,.(POS, gene_name0, percent_dissimilar_inDels)][, SNP_type := "dissimilar_inDels"]
+cc10 <- setnames(cc10, c("POS", "gene_name0", "PercentSNPs", "SNP_type"))
+dc10 <- SNPs_ingenes[,.(POS, gene_name0, percent_identical_inDels)][, SNP_type := "identical_inDels"]
+dc10 <- setnames(dc10, c("POS", "gene_name0", "PercentSNPs", "SNP_type"))
+SNPs_chr10ab <- rbind(ac10, bc10, fill=TRUE)
+SNPs_chr10cd <- rbind(cc10, dc10, fill=TRUE)
+SNPs_chr10 <- rbind(SNPs_chr10ab, SNPs_chr10cd, fill=TRUE)
+#t1 <- SNPs_chr10[POS %between% c(6185769, 7188976),]
+SNPs_chr10 <- SNPs_chr10[, "POS_Mb":= POS/1000000]
+#t2 <- SNPs_chr10[POS %between% c(6185769, 7188976),]
+rm(ac10, bc10, cc10, dc10, SNPs_ingenes, SNPs_chr10ab, SNPs_chr10cd)
+SNPs_chr10 <- SNPs_chr10[!is.na(PercentSNPs), ]
+#t3 <- SNPs_chr10[POS %between% c(6185769, 7188976),]
+#SNPs_chr10 <-unique(SNPs_chr10, by=c("POS_Mb", "SNP_type"))
+#t4 <- SNPs_chr10[POS %between% c(6185769, 7188976),]
+SNPs_chr10 <- SNPs_chr10[, "avg_pSNPs_bygene" := mean(PercentSNPs), by= "gene_name0"]
+SNPs_chr10 <-unique(SNPs_chr10, by=c("gene_name0","avg_pSNPs_bygene", "SNP_type"))
+#t5 <- SNPs_chr10[POS %between% c(6185769, 7188976),]
+
+u <- SNPs_chr10[, lapply(.SD, round, digits = 1), by = POS, .SDcols = c("POS_Mb")]#1digit rounding
+v <- SNPs_chr10[, .(PercentSNPs, gene_name0, SNP_type)]
+SNPs_chr10 <- cbind(u, v) #rounding
+
+t6 <- SNPs_chr10[POS %between% c(6185769, 7188976),]
+fwrite(SNPs_chr10, file="SNPs_chr10_10mbbin.csv", append=FALSE)
+```
+
+```{r plot binned chr10, fig.width=8, fig.height=8}
+SNPs_chr10      <- fread("SNPs_chr10_10mbbin.csv")
+my_title1       <- paste("The percentage of nucleotide polymorphisms in 0.1 Mb bins")
+my_title2       <- paste("on chromosome 10 which are identical or dissimilar to Female 2")
+my_titleX       <- expression(paste("Position along Chromosome 10 (Mb)"))
+my_titleY       <- expression(paste("Percentage of bined nucleotide polymorphisms \n      identical and dissimilar to Female 2"))
+my_legend_title <- paste("SNPs not in Female 1")
+lat_SNPs <- function(tolSNPs_ig) {
+    ggplot(SNPs_chr10, aes(x=gene_name0, y=PercentSNPs, group=SNP_type)) +
+    geom_point(aes(color = SNP_type, fill = SNP_type), alpha=1, size= 1) +
+    geom_smooth(aes(color = SNP_type, fill = SNP_type), method = loess, formula = y ~ x, size= 0.5)+
+    #scale_fill_manual(values=c("cyan", "red", "cyan", "red"))+
+    #scale_color_manual(values=c("grey0", "grey0", "grey0","grey0"))+ 
+    #scale_color_manual(values=c("deepskyblue", "olivedrab", "tomato", "chartreuse4"))+
+    #scale_shape_manual(values=c(4, 3, 1, 2))+
+    geom_hline(aes(yintercept= 1.25, linetype = "Identical SNPs"), color = "grey40") + #color = "blue")
+    geom_hline(aes(yintercept= 13.74, linetype = "Dissimilar SNPs"), color = "grey40") + #color = "blue"
+    geom_hline(aes(yintercept= 0.45, linetype = "Dissimilar inDels"), color = "grey40") + #color = "chartreuse4"
+    geom_hline(aes(yintercept= 0.05, linetype = "Identical inDels"), color = "grey40") + #color = "chartreuse4"
+    scale_linetype_manual(name = "Chr10 Avg", values = c(3, 4, 2, 1))+
+    guides(x = guide_axis(title = my_titleX), y = guide_axis(title = my_titleY ))+
+    theme(axis.title.y = element_text(hjust = 0.5, vjust = 0.5, size=12))+
+    theme(axis.title.x = element_text(hjust = 0.5, vjust = 0, size=12))+   
+    theme(axis.text.x = element_text(hjust=0.5, vjust = 0.5, size=10))+
+    theme(axis.text.y = element_text(vjust = 0.0, hjust= 0.5, size=10))+
+    theme(legend.title = element_text(vjust = 0.0, hjust= 0.5, size=12))+
+    theme(plot.margin = unit(c(0.5,0.5,0.5,1), "cm"))+ #margin height, right, bottom, left.
+    scale_y_continuous(breaks=seq(0,22,2))+
+    scale_x_continuous(breaks=seq(0,26,2))#0 is the start, 14 end, units of 2.
+}
+ggsave("polymism_intol6_Chr10bins.png", plot = lat_SNPs())
+ggdraw(lat_SNPs())
+```
+
+##likely tolerant gene regions as a percent of baces and plot likely tolerant gene regions and mutations within genes
+```{r plot candidate genes, echo = FALSE, include=TRUE, fig.width=8, fig.height=6}
+#tolmatrix3 <- fread("/powerplant/workspace/hrtcdf/github/lataniaAlleles/latpool/tolmatrix3.csv")
+#tolmatrix3 <- fread("/powerplant/workspace/hrtcdf/github/lataniaAlleles/latpool/tolmatrix3_noRed19.csv")
+
+bed     <- fread("/powerplant/workspace/hrtcdf/github/lataniaAlleles/latpool/latania_tol_genes.bed")
+right_hand <- function(dt, bed)  {
+  IRanges::findOverlapPairs(query=dt, subject=bed) %>% second() %>% names()
+}    
+
+snp_bed <- function(vcf, bed) {
+  bed   <- IRanges::IRanges(start = bed$V2, end = bed$V3, names = bed$V1)
+  return(vcf[, gene_name1 := right_hand(POS, bed), by = inrange(POS, start(bed), end(bed))][!is.na(gene_name1)])
+}
+
+SNPs_ingenes <- snp_bed(tolmatrix3, bed) #add bedsites to matrix.
+test1 <- SNPs_ingenes[POS %between% c(6185769, 6188976),]
+###number of sites with individuals in common, #sum SNPno_inall6Tol by gene name
+SNPs_ingenes <- SNPs_ingenes[, "nucCount" := 1][, "nucNumber" := (sum(nucCount, na.rm = FALSE)), by=gene_name1]
+###code sites with 5 tol individuals in common, calculate the percentage of alleles the same among tolerant individuals by gene name 
+SNPs_ingenes <- SNPs_ingenes[SNPno_inTol==5, "percent_identical_SNPs" := (sum(SNPno_inall6Tol, na.rm = TRUE)/nucNumber*100), by=gene_name1] 
+SNPs_ingenes <- SNPs_ingenes[, "Percent_inconsistant_SNPs" := (sum(dissimilar_SNPs, na.rm = TRUE)/nucNumber*100), by=gene_name1]
+SNPs_ingenes <- SNPs_ingenes[, "Percent_inconsistant_inDels" := (sum(dissimilar_inDels, na.rm = TRUE)/nucNumber*100), by=gene_name1]
+SNPs_ingenes <- SNPs_ingenes[, "Percent_identical_inDels" := (sum(inDelno_inall5Tol, na.rm = TRUE)/nucNumber*100), by=gene_name1]
+
+ac10 <- SNPs_ingenes[,.(POS, gene_name1, percent_identical_SNPs)][, `:=` (SNP_type = "Identical_SNPs", "Polymorphism" = "SNP")]
+ac10 <- setnames(ac10, c("POS", "gene_name1", "PercentSNPs", "SNP_type", "Polymorphism"))
+bc10 <- SNPs_ingenes[,.(POS, gene_name1, Percent_inconsistant_SNPs)][, `:=` (SNP_type = "Dissimilar_SNPs", Polymorphism = "SNP")]
+bc10 <- setnames(bc10, c("POS", "gene_name1", "PercentSNPs", "SNP_type", "Polymorphism"))
+cc10 <- SNPs_ingenes[,.(POS, gene_name1, Percent_inconsistant_inDels)][, `:=` (SNP_type = "Dissimilar_inDels", Polymorphism = "inDel") ]
+cc10 <- setnames(cc10, c("POS", "gene_name1", "PercentSNPs", "SNP_type", "Polymorphism"))
+dc10 <- SNPs_ingenes[,.(POS, gene_name1, Percent_identical_inDels)][, `:=` (SNP_type = "identical_inDels", Polymorphism = "inDel")]
+dc10 <- setnames(dc10, c("POS", "gene_name1", "PercentSNPs", "SNP_type", "Polymorphism"))
+SNPs_chr10ab <- rbind(ac10, bc10, fill=TRUE)
+SNPs_chr10cd <- rbind(cc10, dc10, fill=TRUE)
+SNPs_chr10 <- rbind(SNPs_chr10ab, SNPs_chr10cd, fill=TRUE)
+SNPs_chr10 <- SNPs_chr10[, "POS_Mb":= POS/1000000]
+rm(ac10, bc10, cc10, dc10, SNPs_ingenes, SNPs_chr10ab, SNPs_chr10cd)
+SNPs_chr10 <- SNPs_chr10[!is.na(PercentSNPs),]
+
+u <- SNPs_chr10[, lapply(.SD, round, digits = 1), by = POS, .SDcols = c("POS_Mb")]#1digit rounding
+v <- SNPs_chr10[, .(PercentSNPs, gene_name1, SNP_type, Polymorphism)]
+SNPs_chr10 <- cbind(u, v)
+SNPs_chr10 <-unique(SNPs_chr10, by=c("POS_Mb", "SNP_type", "gene_name1"))
+
+fwrite(SNPs_chr10, file="geneSNPs_forrank.csv", append=FALSE)
+t2  <- SNPs_chr10[POS %between% c(6185769, 6188976),]
+t2c <- lapply(SNPs_chr10,class)
+my_title1 <- expression(paste("The percentage of nucleotide polymorphisms within " ,italic("H. lataniae")))
+my_title2 <- expression(paste("tolerance candidate genes which are identical or dissimilar to" ))
+my_title3 <- expression(paste("polymorphisms in Female 2" ))
+#my_title <- expression(paste("Percentage of nucleotide polymorphisms within ", italic("H. lataniae")))
+#my_subtitle <- expression(paste("tolerance candidate genes identical or dissimilar \n to polymorphisms in Female 2"))
+my_titleX <- expression(paste("Candidate genes for tolerance to " ,italic("H. lataniae")))
+my_titleY <- expression(paste("Percentage of nucleotide sites with polymorphisms"))
+my_legend_title <- paste("SNPs not in Female 1")
+lat_SNPs <- function(tolSNPs_ig) {
+    ggplot(SNPs_chr10, aes(x=gene_name1, y=PercentSNPs, group=SNP_type, fill=SNP_type)) +
+    geom_point(shape = 21, alpha = 5/10, size= 3)+
+        #geom_point(shape = 21, alpha = 3/10, size= 4, position=position_jitter(width=-2, seed=1))+
+    #geom_smooth(aes(shape = SNP_type, color = SNP_type, fill = SNP_type), method = loess, formula = y ~ x, size= 0.5)+
+        #scale_fill_manual(values=c("cyan", "red", "cyan", "red"))+
+    #scale_color_manual(values=c("grey0", "grey0", "grey0","grey0"))+ 
+    #scale_color_manual(values=c("blue", "blue", "chartreuse4", "chartreuse4"))+
+    
+    #  scale_shape_manual(values=c(4, 3, 1, 2))+
+    geom_hline(aes(yintercept= 1.52, linetype = "Identical SNPs"), color = "grey40") + #color = "blue")
+    geom_hline(aes(yintercept= 9.65, linetype = "Dissimilar SNPs"), color = "grey40") + #color = "blue"
+    geom_hline(aes(yintercept= 0.36, linetype = "Dissimilar inDels"), color = "grey40") + #color = "chartreuse4"
+    geom_hline(aes(yintercept= 0.07, linetype = "Identical inDels"), color = "grey40") + #color = "chartreuse4"
+    scale_linetype_manual(name = "Chr10 Avg", values = c(3, 4, 2, 1))+
+    #ggtitle(my_title) + #, subtitle = my_subtitle
+    #scale_fill_discrete(name = "Dose", labels = c("A", "B", "C","d"))+
+    labs(title = "")+
+    guides(x = guide_axis(title = my_titleX), y = guide_axis(title = my_titleY ))+
+    theme_classic()+
+    theme(plot.title = element_text(hjust = 0.5, vjust = 0.5, size=14, margin = margin(10, 0, 0, 0, unit = "mm")))+
+    theme(axis.title.y = element_text(hjust = 0.5, vjust = 0.5, size=12))+
+    theme(axis.title.x = element_text(hjust = 0.5, vjust = 0, size=12))+   
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size=10, hjust=1))+
+    theme(axis.text.y = element_text(vjust = 0.0, hjust= 0.5, size=10))+
+    theme(legend.title = element_text(vjust = 0.0, hjust= 0.5, size=12))+
+    theme(plot.margin = unit(c(0,0.5,0.5,0.5), "cm"))+ #margin height, right, bottom, left.
+    scale_y_continuous(breaks=seq(0,26,2))#0 is the start, 14 end, units of 2.
+}
+
+ggsave("polymism_intol_genes.png", plot = lat_SNPs(), width = 8, height = 6)
+ggdraw(lat_SNPs())
+```
+##likely tolerant gene exon regions as a percent of baces and plot
+```{r scatterplot candidate gene exons, echo = FALSE, include=TRUE, fig.width=8, fig.height=6}
+#group by gene with 1000bp flanks and give a column indicating the number of tolerant snps overlapping gene flanks???.
+#tolmatrix3 <- fread("/powerplant/workspace/hrtcdf/github/lataniaAlleles/latpool/tolmatrix3.csv")
+#tolmatrix3 <- fread("/powerplant/workspace/hrtcdf/github/lataniaAlleles/latpool/tolmatrix3_noRed19.csv")
+bed2    <- fread("/powerplant/workspace/hrtcdf/github/lataniaAlleles/latpool/selected_tol_exons.bed")
+
+right_hand2 <- function(dt2, bed2)  {
+  IRanges::findOverlapPairs(query=dt2, subject=bed2) %>% second() %>% names()
+}    
+
+snp_bed2 <- function(vcf2, bed2) {
+  bed2   <- IRanges::IRanges(start = bed2$V2, end = bed2$V3, names = bed2$V1)
+  return(vcf2[, gene_name2 := right_hand2(POS, bed2), by = inrange(POS, start(bed2), end(bed2))][!is.na(gene_name2)])
+}
+SNPs_inexons <- snp_bed2(tolmatrix3, bed2) #add bedsites to matrix.
+test1 <- SNPs_inexons[POS %between% c(6185769, 6188976),]
+SNPs_inexons <- SNPs_inexons[, "nucCount" := 1][, "nucNumber" := (sum(nucCount, na.rm = FALSE)), by=gene_name2]#number of sites with individuals in common, #sum SNPno_inall6Tol by gene name
+
+SNPs_inexons <- SNPs_inexons[SNPno_inTol==5, "percent_identical_SNPs" := (sum(SNPno_inall6Tol, na.rm = TRUE)/nucNumber*100), by=gene_name2] #code sites with 5 tol individuals in common, calculate the percentage of alleles the same among tolerant individuals by gene name 
+SNPs_inexons <- SNPs_inexons[, "Percent_inconsistant_SNPs" := (sum(dissimilar_SNPs, na.rm = TRUE)/nucNumber*100), by=gene_name2]
+
+SNPs_inexons <- SNPs_inexons[, "Percent_inconsistant_inDels" := (sum(dissimilar_inDels, na.rm = TRUE)/nucNumber*100), by=gene_name2]
+SNPs_inexons <- SNPs_inexons[, "Percent_identical_inDels" := (sum(inDelno_inall5Tol, na.rm = TRUE)/nucNumber*100), by=gene_name2]
+
+ac10 <- SNPs_inexons[,.(POS, gene_name2, percent_identical_SNPs)][, `:=` (SNP_type = "Identical_SNPs", "Polymorphism" = "SNP")]
+ac10 <- setnames(ac10, c("POS", "gene_name2", "PercentSNPs", "SNP_type", "Polymorphism"))
+bc10 <- SNPs_inexons[,.(POS, gene_name2, Percent_inconsistant_SNPs)][, `:=` (SNP_type = "Dissimilar_SNPs", Polymorphism = "SNP")]
+bc10 <- setnames(bc10, c("POS", "gene_name2", "PercentSNPs", "SNP_type", "Polymorphism"))
+cc10 <- SNPs_inexons[,.(POS, gene_name2, Percent_inconsistant_inDels)][, `:=` (SNP_type = "Dissimilar_inDels", Polymorphism = "inDel") ]
+cc10 <- setnames(cc10, c("POS", "gene_name2", "PercentSNPs", "SNP_type", "Polymorphism"))
+dc10 <- SNPs_inexons[,.(POS, gene_name2, Percent_identical_inDels)][, `:=` (SNP_type = "identical_inDels", Polymorphism = "inDel")]
+dc10 <- setnames(dc10, c("POS", "gene_name2", "PercentSNPs", "SNP_type", "Polymorphism"))
+SNPs_chr10ab <- rbind(ac10, bc10, fill=TRUE)
+SNPs_chr10cd <- rbind(cc10, dc10, fill=TRUE)
+SNPs_chr10   <- rbind(SNPs_chr10ab, SNPs_chr10cd, fill=TRUE)
+SNPs_chr10   <- SNPs_chr10[, "POS_Mb":= POS/1000000]
+rm(ac10, bc10, cc10, dc10, SNPs_inexons, SNPs_chr10ab, SNPs_chr10cd)
+SNPs_chr10 <- SNPs_chr10[!is.na(PercentSNPs),]
+
+u <- SNPs_chr10[, lapply(.SD, round, digits = 1), by = POS, .SDcols = c("POS_Mb")]#1digit rounding
+v <- SNPs_chr10[, .(PercentSNPs,gene_name2,SNP_type,Polymorphism)]
+SNPs_chr10 <- cbind(u, v)
+SNPs_chr10 <-unique(SNPs_chr10, by=c("POS_Mb", "SNP_type", "gene_name2"))
+fwrite(SNPs_chr10, file="exonSNPs_forrank.csv", append=FALSE)
+
+my_title1 <- expression(paste("The percentage of nucleotide polymorphisms within " ,italic("H. lataniae")))
+my_title2 <- expression(paste("tolerance gene exons which are identical or dissimilar to" ))
+my_title3 <- expression(paste("polymorphisms in Female 2" ))
+#my_title <- expression(paste("The percentage of nucleotide polymorphisms within \n" ,italic("H. lataniae")," tolerance candidate gene exons which are \n identical or dissimilar to polymorphisms in Female 2" ))
+#my_subtitle <- paste("tolerance candidate gene exons which are identical or dissimilar to \n polymorphisms in Female 2")
+my_titleX   <- expression(paste("Candidate gene exons"))
+my_titleY   <- expression(paste("Percentage of nucleotide sites with polymorphisms"))
+
+lat_SNPs <- function(tolSNPs_ig) {
+    ggplot(SNPs_chr10, aes(x=gene_name2, y=PercentSNPs, group=SNP_type, fill=SNP_type)) +
+    geom_point(shape = 21, alpha = 5/10, size= 3) +
+    geom_hline(aes(yintercept= 1.52, linetype = "Identical SNPs"), color = "grey40")+
+    geom_hline(aes(yintercept= 9.65, linetype = "Dissimilar SNPs"), color = "grey40")+
+    geom_hline(aes(yintercept= 0.36, linetype = "Dissimilar inDels"), color = "grey40")+
+    geom_hline(aes(yintercept= 0.07, linetype = "Identical inDels"), color = "grey40") +
+    scale_linetype_manual(name  = "Chr10 Average", values = c(3, 4, 2, 1))+
+ 
+    guides(x = guide_axis(title = my_titleX), y = guide_axis(title = my_titleY ))+
+    theme_classic()+
+    theme(axis.title.y = element_text(hjust = 0.5, vjust = 0.5, size=12))+
+    theme(axis.title.x = element_text(hjust = 0.5, vjust = 0, size=12))+   
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size=10, hjust=1))+
+    theme(axis.text.y = element_text(vjust = 0.0, hjust= 0.5, size=10))+
+    theme(legend.title = element_text(vjust = 0.0, hjust= 0.5, size=12))+
+    theme(plot.margin = unit(c(0.5,0.5,0.5,0.5), "cm"))+ #margin height, right, bottom, left.
+    scale_y_continuous(breaks=seq(0,26,2))#0 is the start, 14 end, units of 2.
+}
+
+ggsave("polymism_intol_exons.png", plot = lat_SNPs(), width = 8, height = 6)
+ggdraw(lat_SNPs())
+      #scale_fill_discrete(name = "Polymorphism", labels = c("Identical SNPs", "Dissimilar SNPs", "Dissimilar inDels", "Identical inDels"))
+
+#ez <- ggdraw(e) +
+#  draw_label(my_title1, x = 0.45, y = 0.97)+
+#  draw_label(my_title2, x = 0.45, y = 0.93)+
+#  draw_label(my_title3, x = 0.45, y = 0.89) 
+#ggsave("SNPs_Chr10.png", plot = ez)
+```
+
+```{r rank genes}
+e_generank  <- fread("/powerplant/workspace/hrtcdf/github/lataniaAlleles/latpool/exonSNPs_forrank.csv")
+e_generank  <- e_generank[, gene_name2 := str_replace_all(gene_name2, ".exon1" , "")]
+e_generank  <- e_generank[, gene_name2 := str_replace_all(gene_name2, ".exon2" , "")]
+e_generank  <- e_generank[, gene_name2 := str_replace_all(gene_name2, ".exon3" , "")]
+e_generank  <- e_generank[, gene_name2 := str_replace_all(gene_name2, ".exon4" , "")]
+e_generank  <- e_generank[, gene_name2 := str_replace_all(gene_name2, ".exon5" , "")]
+e <- names(e_generank)
+e
+e_generank  <- setnames(e_generank, c(names(e_generank)),c("POS", "POS_Mb", "PercentSNPs", "gene_name1", "SNP_type", "Polymorphism"))
+g_generank <- fread("/powerplant/workspace/hrtcdf/github/lataniaAlleles/latpool/geneSNPs_forrank.csv")
+#generank <- fread("/powerplant/workspace/hrtcdf/github/lataniaAlleles/latpool/geneSNPs_forrank.csv")
+generank   <- rbind(e_generank, g_generank)
+
+generank   <- generank[, .(gene_name1, PercentSNPs, Polymorphism, POS_Mb)]
+generank   <- generank[, "percent_polymorphisms" := mean(PercentSNPs), by=(gene_name1)]
+generank   <- unique(generank, by=c("gene_name1"))
+generank   <- generank[order(-percent_polymorphisms)]
+generank   <- generank[, .(gene_name1, percent_polymorphisms, POS_Mb)]
+rows       <- generank[percent_polymorphisms>0, which = TRUE]
+generank   <- generank[, "Rank" := rows]
+generank
+
+kable(generank) %>%
+kable_styling(bootstrap_options = "striped", full_width = F, position = "left") %>%
+  row_spec(0, angle = -45) %>%
+save_kable(file="Rank.png")
+```
+
+
+
