@@ -18,101 +18,8 @@ library(magrittr)
 library(GenomicRanges)
 library(IRanges)
 library(readr)
-library(cowplot)
-library(kableExtra)
 setDTthreads(1)
 module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 vcftools")
-```
-
-```{r data from andrews vcfs to data table from snps in more than 3 pools}
-vcf_files_1        <-grep(pattern="vcf.gz$", list.files(path="/powerplant/output/genomic/plant/Actinidia/chinensis/Resequencing/Variants/Russell_V2a.chromosomes.and.unassigned/ER10522", full.names=T), invert=F, value=T)
-vcf_files_2        <- grep(pattern="vcf.gz$", list.files(path="/powerplant/output/genomic/plant/Actinidia/chinensis/Resequencing/Variants/Russell_V2a.chromosomes.and.unassigned/ER10400_and_SRA", full.names=T), invert=F, value=T)
-
-BSA3snps           <- fread(paste0(here('QTLseqR/'), "BSA3snps.csv"))# snp sites to reduce data volume
-BSA3snps_CHROM_POS <- paste0(BSA3snps[, V1], BSA3snps[, V2])
-
-BSA3n4xqtlsnps_1   <- fread(cmd=paste("bcftools query -R '/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/BSAregions_with3commonsnps.bed' -f'[%SAMPLE \t%CHROM \t%POS \t%REF \t%ALT{0} \t%ALT{1} \t%ALT{2} \t%AD \t%AD{0} \t%AD{1} \n] '", vcf_files_1), fill=F)
-BSA3n4xqtlsnps_1   <- BSA3n4xqtlsnps_1[paste0(V2, V3) %in% na.omit(BSA3snps_CHROM_POS),]#retrieve just SNP sites
-BSA3n4xqtlsnps_2   <- fread(cmd=paste("bcftools query -R '/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/BSAregions_with3commonsnps.bed' -f'[%SAMPLE \t%CHROM \t%POS \t%REF \t%ALT{0} \t%ALT{1} \t%ALT{2} \t%AD \t%AD{0} \t%AD{1} \n] '", vcf_files_2), fill=F)
-BSA3n4xqtlsnps_2   <- BSA3n4xqtlsnps_2[paste0(V2, V3) %in% na.omit(BSA3snps_CHROM_POS),]#retrieve just SNP sites
-BSA3n4xqtlsnps     <- rbind(BSA3n4xqtlsnps_1,BSA3n4xqtlsnps_2); rm(BSA3n4xqtlsnps_1,BSA3n4xqtlsnps_2)
-
-BSA3n4xqtlsnps     <-setnames(BSA3n4xqtlsnps, c("V1","V2","V3","V4","V5","V6","V7","V8","V9","V10"), c("SAMPLE", "CHROM", "POS", "REF", "ALT0", "ALT1", "ALT2", "AD", "AD0", "AD1"))
-BSA3n4xqtlsnps     <- BSA3n4xqtlsnps[str_length(REF)==1,] #take out long reference allele strings
-
-#takes a while to run the below
-for (i in seq_along(BSA3snps_CHROM_POS)){
-BSA3n4xqtlsnps     <- BSA3n4xqtlsnps[paste0(CHROM, POS)==BSA3snps_CHROM_POS[i], "bsaqtl_alt" := BSA3snps$V3[i]]
-}
-fwrite(BSA3n4xqtlsnps, file="BSA3snps_ER10522_ER10400_and_SRA.csv", append=FALSE)
-
-BSA3n4xqtlsnps     <- BSA3n4xqtlsnps[, c("qtlALT0", "qtlALT1", "qtlALT2") := tstrsplit(bsaqtl_alt, ",", fixed=TRUE)]
-BSA3n4xqtlsnps     <- BSA3n4xqtlsnps[ALT0==qtlALT0 | ALT0==qtlALT1 | ALT0==qtlALT2 |ALT1==qtlALT0 | ALT1==qtlALT1 | ALT1==qtlALT2 | ALT2==qtlALT0 | ALT2==qtlALT1 | ALT2==qtlALT2, "match":= 1][match != 1, match := 0][AD1 == 0 |AD1==".", match := 0][is.na(match) == TRUE, match := 0]
-BSA3n4xqtlsnps     <- BSA3n4xqtlsnps[, match := as.numeric(match)]
-BSA3n4xqtlsnps     <- BSA3n4xqtlsnps[, "sum" := sum(match), by = SAMPLE]
-prediction_list3n4 <- BSA3n4xqtlsnps[, .("sum" = na.omit(sum(match))), by = SAMPLE]
-prediction_list3n4 <- prediction_list3n4[, SAMPLE := str_replace_all(SAMPLE, c("ER10522_" = "", "SRA_" = "", "ER10400_" = ""))]#clean pedigreeID
-fwrite(prediction_list3n4, "prediction_list3n4.csv", append=F)
-```
-
-```{r data from all qtl}
-vcf_files_1 <-grep(pattern="vcf.gz$", list.files(path="/powerplant/output/genomic/plant/Actinidia/chinensis/Resequencing/Variants/Russell_V2a.chromosomes.and.unassigned/ER10522", full.names=T), invert=F, value=T)
-vcf_files_2 <- grep(pattern="vcf.gz$", list.files(path="/powerplant/output/genomic/plant/Actinidia/chinensis/Resequencing/Variants/Russell_V2a.chromosomes.and.unassigned/ER10400_and_SRA", full.names=T), invert=F, value=T)
-vcf_files <- c(vcf_files_1,vcf_files_2)
-
-BSAallsnps       <- fread(paste0(here('QTLseqR/'), "BSAallsnps.csv"))
-BSAallsnps       <- BSAallsnps[, "ChrPos" :=  paste(str_replace_all(CHROM, "chr",""), POS, sep=".")]
-BSAallsnps       <- BSAallsnps[order(ChrPos),]
-
-list_of_chrbeds <- grep(pattern="allBSAregions_", list.files(path=here("QTLseqR"), full.names=T), invert=F, value=T)
-
-BSAallsnps_fromvcf <- data.table("SAMPLE"=character(), "CHROM"=numeric(), "POS"=numeric(), "REF"=character(), "ALT0"=character(), "ALT1"=character(), "ALT2"=character(), "AD"=character(), "AD0"=numeric(), "AD1"=numeric())
-
-for (x in vcf_files){
-  for (i in seq(along=list_of_chrbeds)){
-  tmp <- fread(cmd=paste("bcftools query  -f'[%SAMPLE \t%CHROM \t%POS \t%REF \t%ALT{0} \t%ALT{1} \t%ALT{2} \t%AD \t%AD{0} \t%AD{1} \n]'",paste0("-R '",list_of_chrbeds[i],"'"), {x}), fill=F)
-  tmp <- tmp[paste(str_replace_all(V2, "chr",""), V3, sep=".") %in% na.omit(BSAallsnps[, ChrPos]),]#retrieve just SNP sites
-  BSAallsnps_fromvcf <- rbind(tmp, BSAallsnps_fromvcf, use.names=FALSE)
-  }
-}
-fwrite(BSAallsnps_fromvcf, file = "BSAallsnps_fromvcfextract.csv")
-#updated "paste(str_replace_all(V2, "chr",""), V3, sep=".")" from "paste0(V2,V3), check here if there are issues.
-BSAallsnps_fromvcf <- fread("BSAallsnps_fromvcfextract.csv")
-
-BSAallsnps_fromvcf <- setnames(BSAallsnps_fromvcf, c("V1","V2","V3","V4","V5","V6","V7","V8","V9","V10"), c("SAMPLE","CHROM", "POS", "REF", "ALT0", "ALT1", "ALT2","AD", "AD0", "AD1"))
-BSAallsnps_fromvcf     <- BSAallsnps_fromvcf[str_length(REF)==1,] #take out long reference allele strings
-BSAallsnps_fromvcf  <- BSAallsnps_fromvcf[, "ChrPos" :=  paste(str_replace_all(CHROM, "chr",""), POS, sep=".")]#numeric Chr.Pos
-
-chrs <- c("chr1","chr2","chr3","chr4","chr5","chr6","chr7","chr8","chr9","chr10","chr11","chr12","chr13","chr14","chr15","chr17","chr18","chr19","chr20","chr21","chr22","chr23","chr24","chr25","chr26","chr27","chr29")
-
-BSAallsnps_fromvcf_wALT <- data.table("SAMPLE"=character(), "CHROM"=numeric(), "POS"=numeric(), "REF"=character(), "ALT0"=character(), "ALT1"=character(), "ALT2"=character(), "AD"=character(), "AD0"=numeric(), "AD1"=numeric(), "ChrPos"=numeric(), "bsaqtl_alt"=character())
-
-#takes a while to run the below
-for (x in chrs){
-  BSAallsnps_fromvcf_tmp      <- BSAallsnps_fromvcf[CHROM=={x}, ]
-  BSAallsnps_ChrPos_tmp  <- BSAallsnps[CHROM=={x}, ChrPos]
-  BSAallsnps_ALT_tmp    <- BSAallsnps[CHROM=={x}, ALT]
-    for (i in seq(along=BSAallsnps_ChrPos_tmp)){
-    BSAallsnps_fromvcf_tmp    <- BSAallsnps_fromvcf_tmp[ChrPos==BSAallsnps_ChrPos_tmp[i], "bsaqtl_alt" := BSAallsnps_ALT_tmp[i]]
-    BSAallsnps_fromvcf_wALT  <- rbind(BSAallsnps_fromvcf_wALT, BSAallsnps_fromvcf_tmp, use.names=FALSE)
-    }
-  fwrite(BSAallsnps_fromvcf_wALT, paste0("BSAallsnps_fromvcf",{x} ,".csv"))
-  }
-
-
-fwrite(BSAallsnps_fromvcf_wALT, file="BSAallsnps_ER10522_ER10400_and_SRA.csv", append=FALSE)
-
-BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[, c("qtlALT0", "qtlALT1", "qtlALT2") := tstrsplit(bsaqtl_alt, ",", fixed=TRUE)]
-BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[ALT0==qtlALT0 | ALT0==qtlALT1 | ALT0==qtlALT2 |ALT1==qtlALT0 | ALT1==qtlALT1 | ALT1==qtlALT2 | ALT2==qtlALT0 | ALT2==qtlALT1 | ALT2==qtlALT2, "match":= 1][match != 1, match := 0][AD1 == 0 |AD1==".", match := 0][is.na(match) == TRUE, match := 0]
-
-BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[, match := as.numeric(match)]
-BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[, "sum" := sum(match), by = SAMPLE]
-BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[, .("sum" = na.omit(sum(match))), by = SAMPLE]
-
-BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[, SAMPLE := str_replace_all(SAMPLE, c("ER10522_" = "", "SRA_" = "", "ER10400_" = ""))]#clean pedigreeID
-fwrite(BSAallsnps_fromvcf_wALT, "prediction_list_allqtl.csv", append=F)
-
-rm(BSAallsnps_fromvcf_wALT)
 ```
 
 ```{r data from individual qtl by parentpool}
@@ -134,30 +41,33 @@ names_chrbeds_parent <- str_replace_all(list_chrbeds_parent, c("/powerplant/work
 
 BSAallsnps_fromvcf<- data.table("SAMPLE"=character(), "CHROM"=numeric(), "POS"=numeric(), "REF"=character(), "ALT0"=character(), "ALT1"=character(), "ALT2"=character(), "AD"=character(), "AD0"=numeric(), "AD1"=numeric(), "poolparent"=character(), "poolparent_chrpos"=character())
 
-for (chb in seq(along=list_chrbeds_parent)){
+#for each pool parent pull data from vcf files to a single data table.
+for (b in seq(along=list_chrbeds_parent)){
   for (x in seq(along=vcf_files)){
-  BSAallsnps_fromvcf_tmp <- fread(cmd=paste("bcftools query  -f'[%SAMPLE \t%CHROM \t%POS \t%REF \t%ALT{0} \t%ALT{1} \t%ALT{2} \t%AD \t%AD{0} \t%AD{1} \n]'",paste0("-R '",list_chrbeds_parent[chb],"'"), vcf_files[x]), fill=F)
+  BSAallsnps_fromvcf_tmp <- fread(cmd=paste("bcftools query  -f'[%SAMPLE \t%CHROM \t%POS \t%REF \t%ALT{0} \t%ALT{1} \t%ALT{2} \t%AD \t%AD{0} \t%AD{1} \n]'",paste0("-R '",list_chrbeds_parent[b],"'"), vcf_files[x]), fill=F)
   #retrieve just SNP sites below
   BSAallsnps_fromvcf_tmp <- BSAallsnps_fromvcf_tmp[paste(str_replace_all(V2, "chr",""), V3, sep=".") %in% na.omit(BSAallsnps$ChrPos),]
-  BSAallsnps_fromvcf_tmp <- BSAallsnps_fromvcf_tmp[, "poolparent" := names_chrbeds_parent[chb]] 
+  BSAallsnps_fromvcf_tmp <- BSAallsnps_fromvcf_tmp[, "poolparent" := names_chrbeds_parent[b]] 
   BSAallsnps_fromvcf_tmp <- BSAallsnps_fromvcf_tmp[, "poolparent_chrpos" := paste(poolparent, V2, V3, sep=".")]
   BSAallsnps_fromvcf     <- rbind(BSAallsnps_fromvcf_tmp, BSAallsnps_fromvcf, use.names=FALSE)
   }
 }
 BSAallsnps_fromvcf <- setnames(BSAallsnps_fromvcf, c("V1","V2","V3","V4","V5","V6","V7","V8","V9","V10","poolparent", "poolparent_chrpos"), c("SAMPLE","CHROM", "POS", "REF", "ALT0", "ALT1", "ALT2","AD", "AD0", "AD1", "poolparent","poolparent_chrpos"))
-BSAallsnps_fromvcf  <- BSAallsnps_fromvcf[str_length(REF)==1,] #take out long reference allele strings
+
 BSAallsnps_fromvcf  <- BSAallsnps_fromvcf[, "ChrPos" :=  paste(str_replace_all(CHROM, "chr",""), POS, sep=".")]
 
+#below added to test
+BSAallsnps_fromvcf  <- unique(BSAallsnps_fromvcf, by=c("SAMPLE","poolparent","ChrPos"))
 
-#fwrite(BSAallsnps_fromvcf, file = "g5000_BSAgSNPs.csv")
+fwrite(BSAallsnps_fromvcf, file = "g5000_BSAgSNPs.csv")
 #BSAallsnps_fromvcf <- fread("g5000_BSAgSNPs.csv")
-
 
 #takes a while to run: search for each ChrPos in BSAallsnps_fromvcf and apply the alternate to the data.table. 
 BSAallsnps_fromvcf_wALT   <- data.table("SAMPLE"=character(), "CHROM"=numeric(), "POS"=numeric(), "REF"=character(), "ALT0"=character(), "ALT1"=character(), "ALT2"=character(), "AD"=character(), "AD0"=numeric(), "AD1"=numeric(), "ChrPos"=numeric(), "bsaqtl_alt"=character(), "poolparent"=character(),"poolparent_chrpos"=character())
 for (cp in seq(along=BSAallsnps_ppChrPos)){
 BSAallsnps_fromvcf_wALT   <- BSAallsnps_fromvcf[poolparent_chrpos==BSAallsnps_ppChrPos[cp], "bsaqtl_alt" := BSAallsnps_ALT[cp]]
 }
+BSAallsnps_fromvcf_wALT  <- BSAallsnps_fromvcf_wALT[str_length(REF)==1,] #take out long reference allele strings
 
 #fwrite(BSAallsnps_fromvcf_wALT,file=paste0("BSAregions_",names_chrbeds_parent[chb], ".csv"), append=F)
 fwrite(BSAallsnps_fromvcf_wALT,file=paste0("BSAallsnps_fromvcf_wALT.csv"), append=F)
@@ -173,45 +83,43 @@ BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[ALT0==qtlALT0 | ALT0==qtlALT1
 
 BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[, match := as.numeric(match)]
 BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[, "sumSNPs_bypoolparent" := sum(match), by = poolparent]
+BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[, "sumSNPsbysample" := na.omit(sum(match)), by = SAMPLE]
 BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[, SAMPLE := str_replace_all(SAMPLE, c("ER10522_" = "", "SRA_" = "", "ER10400_" = ""))]#clean pedigreeID
 
 fwrite(BSAallsnps_fromvcf_wALT,file=paste0("BSAallsnps_fromvcf_wALT.csv"), append=F)
 #fwrite(BSAallsnps_fromvcf_wALT,file=paste0("BSAregions_",names_chrbeds_parent[chb], ".csv"), append=F)
-```
-
-```{r}
-BSAallsnps_fromvcf_wALT <- fread("BSAallsnps_fromvcf_wALT.csv")
-
 
 for (b in seq(along=list_chrbeds_parent)){
-bed0      <- fread(list_chrbeds_parent[b])
-bedregion <- BSAallsnps_fromvcf_wALT[poolparent==names_chrbeds_parent[b],]
+BSAallsnps_fromvcf_wALTp <- BSAallsnps_fromvcf_wALT[poolparent==names_chrbeds_parent[b],]
+BSAallsnps_fromvcf_wALTp <- unique(BSAallsnps_fromvcf_wALTp, by=c("poolparent","ChrPos","SAMPLE"))
 
-right_hand <- function(bedregion, bed0) {
-  IRanges::findOverlapPairs(query=bedregion, subject=bed0) %>% second() %>% names()
+fwrite(BSAallsnps_fromvcf_wALTp, file=paste0("prediction_", "G5000_", names_chrbeds_parent[b], ".csv"), append=F)
 }
-snp_bed  <- function(vcf, bed0) {           
-  bed0   <- IRanges::IRanges(start = bed0$V2, end = bed0$V3, names = bed0$V4)
-  return(vcf[, qtl_name0 := right_hand(POS, bed0), by = inrange(POS, start(bed0), end(bed0))][!is.na(qtl_name0)])
-}
-test_BSAallsnps_fromvcf_wALT <- snp_bed(bedregion, bed0)
-}
-
-BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[, .("sumSNPs" = na.omit(sum(match))), by = SAMPLE]
-
-fwrite(BSAallsnps_fromvcf_wALT, file=paste0("prediction_list_",names_chrbeds_parent[chb], ".csv"), append=F)
-
-rm(BSAallsnps_fromvcf_wALT)
 
 ```
-***Error in `[.data.table`(vcf, , `:=`(qtl_name0, right_hand(POS, bed0)), : Supplied 131250 items to be assigned to group 2 of size 52790 in column 'qtl_name0'. The RHS length must either be 1 (single values are ok) or match the LHS length exactly. If you wish to 'recycle' the RHS please use rep() explicitly to make this intent clear to readers of your code***
-```{r}
-G5000<-fread("BSAregions_G5000_P1.csv") 
-#G5000pl<-fread("prediction_list_G5000_P1.csv") #all qtl average
-G5000 <- G5000[, SAMPLE := str_replace_all(SAMPLE, c("ER10522_" = "", "SRA_" = "", "ER10400_" = ""))]#clean pedigreeID
 
-G5000 <- G5000[poolparent=="G5000_P1", ][SAMPLE=="CK02_01"| SAMPLE=="CK17_02"| SAMPLE=="CK20_01"| SAMPLE=="CK26_01"|  SAMPLE=="CK51_01"|  SAMPLE=="CK15_03", ]#P1 qtl from beds and individuals contributing to the P1pool
-bed0  <- fread(paste0(here('QTLseqR/'),"BSAregions_G5000_P1_bsa.bed"))
+```{r run plots individually for each pool replacing the fread .csv and .bed parent and its corresponding hashed out samples}
+G5000 <-fread("prediction_G5000_P9.csv")
+G5000 <- G5000[, SAMPLE := str_replace_all(SAMPLE, c("ER10522_" = "", "SRA_" = "", "ER10400_" = ""))]#clean pedigreeID
+G5000 <- G5000[, SAMPLE := str_replace_all(SAMPLE, c("CK02_01"="P1",	"CK19_03"="P2",	"CK23_08"="P3",	"CK51_09"="P4",	"CK09_11"="P5",	"CK17_03"="P6",	"CK18_01"="P7",	"Russell"="P8", "CK10_02"="P9",	"CK20_01"="P10",	"CK22_03"="P11",	"CK51_01"="P12",	"CK01_01_01_01"="P13",	"CK02_04"="P14",	"CK06_01"="P15",	"CK10_05"="P16",	"CK13_02"="P17",	"CK15_03"="P18",	"CK15_04"="P19",	"CK16_01"="P20",	"CK17_02"="P21",	"CK26_01"="P22"))]
+
+#qtl from beds and individuals contributing to the P1pool
+#G5000 <- G5000[poolparent=="P1", ][SAMPLE=="P1"| SAMPLE=="P21"| SAMPLE=="P10"| SAMPLE=="P22"|  SAMPLE=="P12"|  SAMPLE=="P18", ] #P1 pool
+#G5000 <- G5000[poolparent=="P2", ][SAMPLE=="P2"| SAMPLE=="P9"| SAMPLE=="P16"| SAMPLE=="P17"| SAMPLE=="P19"|  SAMPLE=="P12"|  SAMPLE=="P22", ] #P2 pool
+#G5000 <- G5000[poolparent=="P3", ][SAMPLE=="P3"| SAMPLE=="P13"| SAMPLE=="P18"| SAMPLE=="P20"| SAMPLE=="P11", ] #P3 pool
+#G5000 <- G5000[poolparent=="P4", ][SAMPLE=="P4"| SAMPLE=="P14"| SAMPLE=="P15"| SAMPLE=="P9"| SAMPLE=="P19"|  SAMPLE=="P11", ] #P4 pool
+#G5000 <- G5000[poolparent=="P11", ][SAMPLE=="P11"| SAMPLE=="P3"| SAMPLE=="P4", ] #P11 pool
+#G5000 <- G5000[poolparent=="P12", ][SAMPLE=="P12"| SAMPLE=="P1"| SAMPLE=="P6"| SAMPLE=="P2", ] #P12 pool
+
+
+G5000 <- G5000[poolparent=="P9", ][SAMPLE=="P9"| SAMPLE=="P6"| SAMPLE=="P7"| SAMPLE=="P4", ] #P9 pool
+#G5000 <- G5000[poolparent=="P10", ][SAMPLE=="P10"| SAMPLE=="P1"| SAMPLE=="P5"| SAMPLE=="P8", ] #P10 pool
+
+
+#G5000t<- unique(G5000, by=c("ChrPos","SAMPLE"))
+
+
+bed0  <- fread(paste0(here('QTLseqR/'),"BSAregions_G5000_P9_bsa.bed"))
 
 right_hand <- function(G5000, bed0)  {
   IRanges::findOverlapPairs(query=G5000, subject=bed0) %>% second() %>% names()
@@ -220,10 +128,14 @@ snp_bed <- function(vcf, bed0) {
   bed0   <- IRanges::IRanges(start = bed0$V2, end = bed0$V3, names = bed0$V4)
   return(vcf[, qtl_name0 := right_hand(POS, bed0), by = inrange(POS, start(bed0), end(bed0))][!is.na(qtl_name0)])
 }
-G5000t <- snp_bed(G5000, bed0)
+G5000 <- snp_bed(G5000, bed0)
 
-p <- ggplot(data=G5000, aes(x=ChrPos, y=POS))+
-geom_point(aes(colour=G5000[,SAMPLE]),alpha=5/10,shape=22, na.rm=T)+#G5000[,parent],size=G5000[,overlap])
+G5000 <- G5000[, "sumSNPs_bysample" := na.omit(sum(match)), by = SAMPLE]
+G5000 <- G5000[, "sumSNPs_byqtlname" := na.omit(sum(match)), by = qtl_name0]
+G5000 <- G5000[, "sumSNPs_bysample_byqtlname" := na.omit(sum(match)), by = list(SAMPLE, qtl_name0)]
+
+p <- ggplot(data=G5000, aes(x=SAMPLE, y=sumSNPs_bysample_byqtlname))+
+geom_jitter(aes(colour=G5000[,qtl_name0]),alpha=5/10,shape=20, na.rm=T)+#G5000[,parent],size=G5000[,overlap])
 #scale_size_continuous(name=str_wrap("Number of overlapping SNPs from QTL",20), limits=c(1, 4), breaks=seq(1, 4, by=1)) +
 scale_size_continuous(name=str_wrap("Number of overlapping SNPs from QTL",20), limits=c(1, 4), breaks=seq(1, 4, by=1)) +
 guides(color= guide_legend())+#, size=guide_legend()
@@ -236,8 +148,8 @@ theme(plot.title =element_text(color = "grey20", size = 12, angle = 0, hjust = .
   axis.title.x   =element_text(color = "grey20", size = 12, angle = 0, hjust = .5, vjust = 0, face = "plain"),
   axis.title.y   =element_text(color = "grey20", size = 12, angle = 90, hjust = .5, vjust = .5, face = "plain"))+
   xlab("Parent contributing to pool")+
-  ylab("Sum of SNPs identical to alternates under the QTL peak")
+  ylab("Number of SNPs identical to those under the QTL peak")
 print(p)
-#ggsave("colourparentsQTLpeakoverlap.png", plot = last_plot(), width = 20, height = 12, units = c("cm"), dpi = 320)
+#ggsave("p9_colourparentsQTLpeakoverlap.png", plot = last_plot(), width = 20, height = 12, units = c("cm"), dpi = 320)
 
 ```
