@@ -111,15 +111,12 @@ G5000 <- G5000[, SAMPLE := str_replace_all(SAMPLE, c("CK02_01"="P1",	"CK19_03"="
 #G5000 <- G5000[poolparent=="P11", ][SAMPLE=="P11"| SAMPLE=="P3"| SAMPLE=="P4", ] #P11 pool
 #G5000 <- G5000[poolparent=="P12", ][SAMPLE=="P12"| SAMPLE=="P1"| SAMPLE=="P6"| SAMPLE=="P2", ] #P12 pool
 
-
 G5000 <- G5000[poolparent=="P9", ][SAMPLE=="P9"| SAMPLE=="P6"| SAMPLE=="P7"| SAMPLE=="P4", ] #P9 pool
 #G5000 <- G5000[poolparent=="P10", ][SAMPLE=="P10"| SAMPLE=="P1"| SAMPLE=="P5"| SAMPLE=="P8", ] #P10 pool
 
-
 #G5000t<- unique(G5000, by=c("ChrPos","SAMPLE"))
 
-
-bed0  <- fread(paste0(here('QTLseqR/'),"BSAregions_G5000_P9_bsa.bed"))
+bed0  <- fread("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/BSAregions_G5000_P9_bsa.bed")
 
 right_hand <- function(G5000, bed0)  {
   IRanges::findOverlapPairs(query=G5000, subject=bed0) %>% second() %>% names()
@@ -129,6 +126,7 @@ snp_bed <- function(vcf, bed0) {
   return(vcf[, qtl_name0 := right_hand(POS, bed0), by = inrange(POS, start(bed0), end(bed0))][!is.na(qtl_name0)])
 }
 G5000 <- snp_bed(G5000, bed0)
+
 
 G5000 <- G5000[, "sumSNPs_bysample" := na.omit(sum(match)), by = SAMPLE]
 G5000 <- G5000[, "sumSNPs_byqtlname" := na.omit(sum(match)), by = qtl_name0]
