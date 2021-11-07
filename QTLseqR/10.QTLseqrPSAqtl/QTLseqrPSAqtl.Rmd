@@ -12,12 +12,10 @@ library(glue)
 library(here)
 library(data.table)
 library(tidyverse)
-library(stringr)
 library(ggplot2)
 library(magrittr)
 library(GenomicRanges)
 library(IRanges)
-library(readr)
 setDTthreads(1)
 module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 vcftools")
 ```
@@ -95,59 +93,85 @@ BSAallsnps_fromvcf_wALTp <- unique(BSAallsnps_fromvcf_wALTp, by=c("poolparent","
 
 fwrite(BSAallsnps_fromvcf_wALTp, file=paste0("prediction_", "G5000_", names_chrbeds_parent[b], ".csv"), append=F)
 }
-
 ```
 
-```{r run plots individually for each pool replacing the fread .csv and .bed parent and its corresponding hashed out samples}
-G5000 <-fread("prediction_G5000_P9.csv")
+```{r run plots individually for each pool replacing the fread .csv and .bed parent and its corresponding hashed out samples, fig.show='hold'}
+poolparents <- c('P1','P2','P3','P4','P9','P10','P11','P12')
+for (i in poolparents){
+G5000 <-fread(paste0("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/10.QTLseqrPSAqtl/prediction_G5000_",{i},".csv"))
+bed0  <- fread(paste0("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/BSAregions_G5000_",i,"_bsa.bed"))
+
 G5000 <- G5000[, SAMPLE := str_replace_all(SAMPLE, c("ER10522_" = "", "SRA_" = "", "ER10400_" = ""))]#clean pedigreeID
 G5000 <- G5000[, SAMPLE := str_replace_all(SAMPLE, c("CK02_01"="P1",	"CK19_03"="P2",	"CK23_08"="P3",	"CK51_09"="P4",	"CK09_11"="P5",	"CK17_03"="P6",	"CK18_01"="P7",	"Russell"="P8", "CK10_02"="P9",	"CK20_01"="P10",	"CK22_03"="P11",	"CK51_01"="P12",	"CK01_01_01_01"="P13",	"CK02_04"="P14",	"CK06_01"="P15",	"CK10_05"="P16",	"CK13_02"="P17",	"CK15_03"="P18",	"CK15_04"="P19",	"CK16_01"="P20",	"CK17_02"="P21",	"CK26_01"="P22"))]
 
 #qtl from beds and individuals contributing to the P1pool
-#G5000 <- G5000[poolparent=="P1", ][SAMPLE=="P1"| SAMPLE=="P21"| SAMPLE=="P10"| SAMPLE=="P22"|  SAMPLE=="P12"|  SAMPLE=="P18", ] #P1 pool
-#G5000 <- G5000[poolparent=="P2", ][SAMPLE=="P2"| SAMPLE=="P9"| SAMPLE=="P16"| SAMPLE=="P17"| SAMPLE=="P19"|  SAMPLE=="P12"|  SAMPLE=="P22", ] #P2 pool
-#G5000 <- G5000[poolparent=="P3", ][SAMPLE=="P3"| SAMPLE=="P13"| SAMPLE=="P18"| SAMPLE=="P20"| SAMPLE=="P11", ] #P3 pool
-#G5000 <- G5000[poolparent=="P4", ][SAMPLE=="P4"| SAMPLE=="P14"| SAMPLE=="P15"| SAMPLE=="P9"| SAMPLE=="P19"|  SAMPLE=="P11", ] #P4 pool
-#G5000 <- G5000[poolparent=="P11", ][SAMPLE=="P11"| SAMPLE=="P3"| SAMPLE=="P4", ] #P11 pool
-#G5000 <- G5000[poolparent=="P12", ][SAMPLE=="P12"| SAMPLE=="P1"| SAMPLE=="P6"| SAMPLE=="P2", ] #P12 pool
-
-G5000 <- G5000[poolparent=="P9", ][SAMPLE=="P9"| SAMPLE=="P6"| SAMPLE=="P7"| SAMPLE=="P4", ] #P9 pool
-#G5000 <- G5000[poolparent=="P10", ][SAMPLE=="P10"| SAMPLE=="P1"| SAMPLE=="P5"| SAMPLE=="P8", ] #P10 pool
-
-#G5000t<- unique(G5000, by=c("ChrPos","SAMPLE"))
-
-bed0  <- fread("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/BSAregions_G5000_P9_bsa.bed")
-
-right_hand <- function(G5000, bed0)  {
-  IRanges::findOverlapPairs(query=G5000, subject=bed0) %>% second() %>% names()
-}    
-snp_bed <- function(vcf, bed0) {           
-  bed0   <- IRanges::IRanges(start = bed0$V2, end = bed0$V3, names = bed0$V4)
-  return(vcf[, qtl_name0 := right_hand(POS, bed0), by = inrange(POS, start(bed0), end(bed0))][!is.na(qtl_name0)])
+if (i=="P1"){
+G5000 <- G5000[poolparent=="P1",][SAMPLE=="P1"| SAMPLE=="P21"|SAMPLE=="P10"| SAMPLE=="P22"|SAMPLE=="P12"| SAMPLE=="P18",]
 }
-G5000 <- snp_bed(G5000, bed0)
+if (i=="P2"){
+G5000 <- G5000[poolparent=="P2",][SAMPLE=="P2"|SAMPLE=="P9"|SAMPLE=="P16"|SAMPLE=="P17"|SAMPLE=="P19"| SAMPLE=="P12"|SAMPLE=="P22",]
+}
+if (i=="P3"){
+G5000 <- G5000[poolparent=="P3", ][SAMPLE=="P3"| SAMPLE=="P13"| SAMPLE=="P18"| SAMPLE=="P20"| SAMPLE=="P11",]
+}
+if (i=="P4"){
+G5000 <- G5000[poolparent=="P4", ][SAMPLE=="P4"| SAMPLE=="P14"| SAMPLE=="P15"| SAMPLE=="P9"|SAMPLE=="P19"|SAMPLE=="P11",]
+}
+if (i=="P9"){
+G5000 <- G5000[poolparent=="P9", ][SAMPLE=="P9"| SAMPLE=="P6"| SAMPLE=="P7"| SAMPLE=="P4",] 
+}
+if (i=="P10"){
+G5000 <- G5000[poolparent=="P10", ][SAMPLE=="P10"| SAMPLE=="P1"| SAMPLE=="P5"| SAMPLE=="P8",] 
+}
+if (i=="P11"){
+G5000 <- G5000[poolparent=="P11", ][SAMPLE=="P11"| SAMPLE=="P3"| SAMPLE=="P4", ]
+}
+if (i=="P12"){
+G5000 <- G5000[poolparent=="P12", ][SAMPLE=="P12"| SAMPLE=="P1"| SAMPLE=="P6"| SAMPLE=="P2",] 
+}
 
+#attach names of bedfile region(qtl_names) to G5000
+vcfGR <- GRanges(seqnames = G5000$CHROM, ranges=IRanges(start = G5000$POS, end = G5000$POS))
+bedGR <- GRanges(seqnames = bed0$V1, ranges=IRanges(start = bed0$V2, end = bed0$V3, names = bed0$V4))
+coords <- findOverlaps(vcfGR, bedGR)
+vcfGR[queryHits(coords)]
+G5000_vcf_hits <- G5000[queryHits(coords),]
+bed0[subjectHits(coords),]
+G5000_vcf_hits$qtl_name <- bed0[subjectHits(coords), V4]
+G5000 <- as.data.table(G5000_vcf_hits)
 
 G5000 <- G5000[, "sumSNPs_bysample" := na.omit(sum(match)), by = SAMPLE]
-G5000 <- G5000[, "sumSNPs_byqtlname" := na.omit(sum(match)), by = qtl_name0]
-G5000 <- G5000[, "sumSNPs_bysample_byqtlname" := na.omit(sum(match)), by = list(SAMPLE, qtl_name0)]
+G5000 <- G5000[, "sumSNPs_byqtlname" := na.omit(sum(match)), by = qtl_name]
+G5000 <- G5000[, "sumSNPs_bysample_byqtlname" := na.omit(sum(match)), by = list(SAMPLE, qtl_name)]
+G5000 <- G5000[, "CHROMn" := str_replace_all(CHROM, "chr", "")]
 
-p <- ggplot(data=G5000, aes(x=SAMPLE, y=sumSNPs_bysample_byqtlname))+
-geom_jitter(aes(colour=G5000[,qtl_name0]),alpha=5/10,shape=20, na.rm=T)+#G5000[,parent],size=G5000[,overlap])
+G5000 <- G5000[, "qtl_name_f" := as.factor(qtl_name)]
+G5000 <- G5000[, qtl_name_f := factor(qtl_name_f, levels = CHROMn)]
+
+#G5000 <- G5000[, "qtl_name_fr" := relevel(qtl_name_f, CHROMn), by=CHROMn]
+#relevel(x, ref, ...)
+
+levels(G5000$qtl_name_f)
+levels(G5000$qtl_name)
+
+
+p <- ggplot(data=G5000, aes(x=qtl_name_f, y=sumSNPs_bysample_byqtlname))+
+geom_jitter(aes(colour=G5000[,SAMPLE]),alpha=5/10,shape=20, na.rm=T)+#G5000[,parent],size=G5000[,overlap])
 #scale_size_continuous(name=str_wrap("Number of overlapping SNPs from QTL",20), limits=c(1, 4), breaks=seq(1, 4, by=1)) +
 scale_size_continuous(name=str_wrap("Number of overlapping SNPs from QTL",20), limits=c(1, 4), breaks=seq(1, 4, by=1)) +
-guides(color= guide_legend())+#, size=guide_legend()
-  
+guides(color= guide_legend(title="QTL name"))+#, size=guide_legend()
+
 theme(plot.title =element_text(color = "grey20", size = 12, angle = 0, hjust = .5, vjust = 0, face = "plain"),
   legend.text    =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = .5, face = "plain"),
   legend.title   =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = 0, face = "plain"),
-  axis.text.x    =element_text(color = "grey20", size = 12, angle = 0, hjust = .5, vjust = 0, face = "plain"),
+  axis.text.x    =element_text(color = "grey20", size = 12, angle = 90, hjust = .5, vjust = 0, face = "plain"),
   axis.text.y    =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = 0, face = "plain"),  
   axis.title.x   =element_text(color = "grey20", size = 12, angle = 0, hjust = .5, vjust = 0, face = "plain"),
   axis.title.y   =element_text(color = "grey20", size = 12, angle = 90, hjust = .5, vjust = .5, face = "plain"))+
-  xlab("Parent contributing to pool")+
-  ylab("Number of SNPs identical to those under the QTL peak")
+  xlab(paste0("Parent contributing to pool ",i))+
+  ylab(paste0("Number of SNPs identical to QTL peak +/- 10000 bp"))
 print(p)
-#ggsave("p9_colourparentsQTLpeakoverlap.png", plot = last_plot(), width = 20, height = 12, units = c("cm"), dpi = 320)
-
+#ggsave(paste0(i,"_colourparentsQTLpeakoverlap.png"), plot = last_plot(), width = 20, height = 12, units = c("cm"), dpi = 320)
+}
 ```
+
