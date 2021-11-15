@@ -1,0 +1,203 @@
+---
+title: "calculate relationship of pool parents at bait regions"
+author: "Casey Flay"
+date: "07/10/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, include=FALSE, fig.width=12, fig.height=8, fig.path='Figs/')
+library(RLinuxModules)
+library(glue)
+library(here)
+library(data.table)
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(GenomicRanges)
+library(IRanges)
+setDTthreads(1)
+module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 vcftools")
+```
+
+```{r allele differences between parents at QTL sites}
+vcf_files_1 <-grep(pattern="vcf.gz$", list.files(path="/powerplant/output/genomic/plant/Actinidia/chinensis/Resequencing/Variants/Russell_V2a.chromosomes.and.unassigned/ER10522", full.names=T), invert=F, value=T)
+vcf_files_2 <- grep(pattern="vcf.gz$", list.files(path="/powerplant/output/genomic/plant/Actinidia/chinensis/Resequencing/Variants/Russell_V2a.chromosomes.and.unassigned/ER10400_and_SRA", full.names=T), invert=F, value=T)
+vcf_files <- c(vcf_files_1,vcf_files_2); rm(vcf_files_1,vcf_files_2)
+
+#combine regions from seperate parent beds made in QTLseqrPSAqtl into a single bed file with no overlap.
+pp <- c("P1","P2","P3","P4","P9","P10","P11","P12")
+for (i in pp){
+assign(i, fread(paste0(here("QTLseqR/"),"BSAregions_G10000_",i,"_bsa.bed")))
+}
+pplist <- rbindlist(list(P1, P2, P3, P4, P9, P10, P11, P12)); rm(P1, P2, P3, P4, P9, P10, P11, P12)
+
+#write.table(pplist,"allbeds.bed",quote=FALSE, col.names=FALSE, row.names=FALSE, sep="\t")#edit manually to exclude overlapped regions and duplicates
+
+BSAallsnps_fromvcf<- data.table("SAMPLE"=character(), "CHROM"=numeric(), "POS"=numeric(), "REF"=character(), "ALT0"=character(), "ALT1"=character(), "AD"=character(), "AD0"=numeric(), "AD1"=numeric())
+
+#pull data from vcf files to a single data table.
+for (x in seq(along=vcf_files)){
+    BSAallsnps_fromvcf_tmp <- fread(cmd=paste("bcftools query -f'[%SAMPLE \t%CHROM \t%POS \t%REF \t%ALT{0} \t%ALT{1} \t%AD \t%AD{0} \t%AD{1} \n]' -R '/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/10.QTLseqrPSAqtl/allbeds.bed'", vcf_files[x]), fill=F)
+  #retrieve just SNP sites below
+  BSAallsnps_fromvcf     <- rbind(BSAallsnps_fromvcf_tmp, BSAallsnps_fromvcf, use.names=FALSE)
+}
+rm(BSAallsnps_fromvcf_tmp)
+
+BSAallsnps_fromvcf <- BSAallsnps_fromvcf[V8==0, V4:="."][V9==0, V5:="."]
+BSAallsnps_fromvcf <- BSAallsnps_fromvcf[V1!="ER10400_CK51_09"]#duplicate removed in favour of "ER10522_CK51_09"
+BSAallsnps_fromvcf <- BSAallsnps_fromvcf[, V1 := str_replace_all(V1, c("ER10522_"="","ER10400_"="","SRA_"=""))]
+BSAallsnps_fromvcf <- BSAallsnps_fromvcf[V1=="CK02_01"| V1=="CK19_03"| V1=="CK23_08"| V1=="CK51_09"| V1=="Russell"| V1=="CK10_02"| V1=="CK20_01"| V1=="CK22_03"| V1=="CK51_01",]
+
+
+BSAallsnps_fromvcf <- setnames(BSAallsnps_fromvcf, c(names(BSAallsnps_fromvcf)), c("SAMPLE","CHROM", "POS", "REF", "ALT0", "ALT1","AD", "AD0", "AD1"))
+
+BSAallsnps_fromvcf  <- BSAallsnps_fromvcf[, "ChrPos" :=  paste(str_replace_all(CHROM, "chr",""), POS, sep=".")]
+BSAallsnps_fromvcf  <- BSAallsnps_fromvcf[str_length(REF)==1,] #take out long reference allele strings
+#below added to test
+sapply(BSAallsnps_fromvcf, class)
+
+SAMPLE_list <- c("CK02_01","CK19_03","CK23_08","CK51_09","Russell","CK10_02","CK20_01","CK22_03","CK51_01")
+for (i in SAMPLE_list){
+tmp <- BSAallsnps_fromvcf[SAMPLE==i,]
+tmp <- setkey(tmp, ChrPos)
+assign(i, setnames(tmp, c(names(BSAallsnps_fromvcf)), c(paste0(i,"SAMPLE"),paste0(i,"CHROM"), paste0(i,"POS"), paste0(i,"REF"), paste0(i,"ALT0"), paste0(i,"ALT1"),paste0(i,"AD"), paste0(i,"AD0"), paste0(i,"AD1"),paste0("ChrPos")) ))
+}
+
+BSAallsnps_fromvcf<- merge(CK02_01,CK19_03, by = "ChrPos")
+BSAallsnps_fromvcf<- merge(BSAallsnps_fromvcf,CK23_08, by = "ChrPos")
+BSAallsnps_fromvcf<- merge(BSAallsnps_fromvcf,CK51_09, by = "ChrPos")
+BSAallsnps_fromvcf<- merge(BSAallsnps_fromvcf,Russell, by = "ChrPos")
+BSAallsnps_fromvcf<- merge(BSAallsnps_fromvcf,CK10_02, by = "ChrPos")
+BSAallsnps_fromvcf<- merge(BSAallsnps_fromvcf,CK20_01, by = "ChrPos")
+BSAallsnps_fromvcf<- merge(BSAallsnps_fromvcf,CK22_03, by = "ChrPos")
+BSAallsnps_fromvcf<- merge(BSAallsnps_fromvcf,CK51_01, by = "ChrPos")
+rm("CK02_01","CK19_03","CK23_08","CK51_09","Russell","CK10_02","CK20_01","CK22_03","CK51_01")
+
+fwrite(BSAallsnps_fromvcf, "tmp.csv")
+BSAallsnps_fromvcf<-fread("tmp.csv")
+
+#paste doesn't work in data.table even if glued. write it out.
+# SAMPLEs <- c("CK19_03","CK23_08","CK51_09","Russell","CK10_02","CK20_01","CK22_03","CK51_01","CK02_01")
+#  for (i in seq(along=SAMPLEs)){
+# iALT0 <- paste0(SAMPLEs[i],"ALT0")
+# ii    <- paste(SAMPLE_list[i],"x",SAMPLEs[i])
+# a <- BSAallsnps_fromvcf[glue({iALT0})!="." & glue({iALT0})==glue({iALT0}), glue({ii}):= 1]#[is.na(glue{ii}), glue{ii} := 0]
+# }
+
+BSAallsnps_fromvcf <- BSAallsnps_fromvcf[
+  CK02_01ALT0!="." & CK02_01ALT0==CK02_01ALT0, "CK02_01xCK02_01":= 1][is.na(CK02_01xCK02_01), CK02_01xCK02_01 := 0
+][CK02_01ALT0!="." & CK02_01ALT0==CK19_03ALT0, "CK02_01xCK19_03":= 1][is.na(CK02_01xCK19_03), CK02_01xCK19_03 := 0
+][CK02_01ALT0!="." & CK02_01ALT0==CK23_08ALT0, "CK02_01xCK23_08":= 1][is.na(CK02_01xCK23_08), CK02_01xCK23_08 := 0
+][CK02_01ALT0!="." & CK02_01ALT0==CK51_09ALT0, "CK02_01xCK51_09":= 1][is.na(CK02_01xCK51_09), CK02_01xCK51_09 := 0
+][CK02_01ALT0!="." & CK02_01ALT0==RussellALT0, "CK02_01xRussell":= 1][is.na(CK02_01xRussell), CK02_01xRussell := 0
+][CK02_01ALT0!="." & CK02_01ALT0==CK10_02ALT0, "CK02_01xCK10_02":= 1][is.na(CK02_01xCK10_02), CK02_01xCK10_02 := 0
+][CK02_01ALT0!="." & CK02_01ALT0==CK20_01ALT0, "CK02_01xCK20_01":= 1][is.na(CK02_01xCK20_01), CK02_01xCK20_01 := 0
+][CK02_01ALT0!="." & CK02_01ALT0==CK22_03ALT0, "CK02_01xCK22_03":= 1][is.na(CK02_01xCK22_03), CK02_01xCK22_03 := 0
+][CK02_01ALT0!="." & CK02_01ALT0==CK51_01ALT0, "CK02_01xCK51_01":= 1][is.na(CK02_01xCK51_01), CK02_01xCK51_01 := 0
+
+][CK19_03ALT0!="." & CK19_03ALT0==CK02_01ALT0, "CK19_03xCK02_01":= 1][is.na(CK19_03xCK02_01), CK19_03xCK02_01 := 0     
+][CK19_03ALT0!="." & CK19_03ALT0==CK19_03ALT0, "CK19_03xCK19_03":= 1][is.na(CK19_03xCK19_03), CK19_03xCK19_03 := 0
+][CK19_03ALT0!="." & CK19_03ALT0==CK23_08ALT0, "CK19_03xCK23_08":= 1][is.na(CK19_03xCK23_08), CK19_03xCK23_08 := 0
+][CK19_03ALT0!="." & CK19_03ALT0==CK51_09ALT0, "CK19_03xCK51_09":= 1][is.na(CK19_03xCK51_09), CK19_03xCK51_09 := 0
+][CK19_03ALT0!="." & CK19_03ALT0==RussellALT0, "CK19_03xRussell":= 1][is.na(CK19_03xRussell), CK19_03xRussell := 0
+][CK19_03ALT0!="." & CK19_03ALT0==CK10_02ALT0, "CK19_03xCK10_02":= 1][is.na(CK19_03xCK10_02), CK19_03xCK10_02 := 0
+][CK19_03ALT0!="." & CK19_03ALT0==CK20_01ALT0, "CK19_03xCK20_01":= 1][is.na(CK19_03xCK20_01), CK19_03xCK20_01 := 0
+][CK19_03ALT0!="." & CK19_03ALT0==CK22_03ALT0, "CK19_03xCK22_03":= 1][is.na(CK19_03xCK22_03), CK19_03xCK22_03 := 0
+][CK19_03ALT0!="." & CK19_03ALT0==CK51_01ALT0, "CK19_03xCK51_01":= 1][is.na(CK19_03xCK51_01), CK19_03xCK51_01 := 0
+                                                                      
+][CK23_08ALT0!="." & CK23_08ALT0==CK02_01ALT0, "CK23_08xCK02_01":= 1][is.na(CK23_08xCK02_01), CK23_08xCK02_01 := 0     
+][CK23_08ALT0!="." & CK23_08ALT0==CK19_03ALT0, "CK23_08xCK19_03":= 1][is.na(CK23_08xCK19_03), CK23_08xCK19_03 := 0
+][CK23_08ALT0!="." & CK23_08ALT0==CK23_08ALT0, "CK23_08xCK23_08":= 1][is.na(CK23_08xCK23_08), CK23_08xCK23_08 := 0
+][CK23_08ALT0!="." & CK23_08ALT0==CK51_09ALT0, "CK23_08xCK51_09":= 1][is.na(CK23_08xCK51_09), CK23_08xCK51_09 := 0
+][CK23_08ALT0!="." & CK23_08ALT0==RussellALT0, "CK23_08xRussell":= 1][is.na(CK23_08xRussell), CK23_08xRussell := 0
+][CK23_08ALT0!="." & CK23_08ALT0==CK10_02ALT0, "CK23_08xCK10_02":= 1][is.na(CK23_08xCK10_02), CK23_08xCK10_02 := 0
+][CK23_08ALT0!="." & CK23_08ALT0==CK20_01ALT0, "CK23_08xCK20_01":= 1][is.na(CK23_08xCK20_01), CK23_08xCK20_01 := 0
+][CK23_08ALT0!="." & CK23_08ALT0==CK22_03ALT0, "CK23_08xCK22_03":= 1][is.na(CK23_08xCK22_03), CK23_08xCK22_03 := 0
+][CK23_08ALT0!="." & CK23_08ALT0==CK51_01ALT0, "CK23_08xCK51_01":= 1][is.na(CK23_08xCK51_01), CK23_08xCK51_01 := 0
+                                                                      
+][CK51_09ALT0!="." & CK51_09ALT0==CK02_01ALT0, "CK51_09xCK02_01":= 1][is.na(CK51_09xCK02_01), CK51_09xCK02_01 := 0     
+][CK51_09ALT0!="." & CK51_09ALT0==CK19_03ALT0, "CK51_09xCK19_03":= 1][is.na(CK51_09xCK19_03), CK51_09xCK19_03 := 0
+][CK51_09ALT0!="." & CK51_09ALT0==CK23_08ALT0, "CK51_09xCK23_08":= 1][is.na(CK51_09xCK23_08), CK51_09xCK23_08 := 0
+][CK51_09ALT0!="." & CK51_09ALT0==CK51_09ALT0, "CK51_09xCK51_09":= 1][is.na(CK51_09xCK51_09), CK51_09xCK51_09 := 0
+][CK51_09ALT0!="." & CK51_09ALT0==RussellALT0, "CK51_09xRussell":= 1][is.na(CK51_09xRussell), CK51_09xRussell := 0
+][CK51_09ALT0!="." & CK51_09ALT0==CK10_02ALT0, "CK51_09xCK10_02":= 1][is.na(CK51_09xCK10_02), CK51_09xCK10_02 := 0
+][CK51_09ALT0!="." & CK51_09ALT0==CK20_01ALT0, "CK51_09xCK20_01":= 1][is.na(CK51_09xCK20_01), CK51_09xCK20_01 := 0
+][CK51_09ALT0!="." & CK51_09ALT0==CK22_03ALT0, "CK51_09xCK22_03":= 1][is.na(CK51_09xCK22_03), CK51_09xCK22_03 := 0
+][CK51_09ALT0!="." & CK51_09ALT0==CK51_01ALT0, "CK51_09xCK51_01":= 1][is.na(CK51_09xCK51_01), CK51_09xCK51_01 := 0
+                                                                      
+][RussellALT0!="." & RussellALT0==CK02_01ALT0, "RussellxCK02_01":= 1][is.na(RussellxCK02_01), RussellxCK02_01 := 0     
+][RussellALT0!="." & RussellALT0==CK19_03ALT0, "RussellxCK19_03":= 1][is.na(RussellxCK19_03), RussellxCK19_03 := 0
+][RussellALT0!="." & RussellALT0==CK23_08ALT0, "RussellxCK23_08":= 1][is.na(RussellxCK23_08), RussellxCK23_08 := 0
+][RussellALT0!="." & RussellALT0==CK51_09ALT0, "RussellxCK51_09":= 1][is.na(RussellxCK51_09), RussellxCK51_09 := 0
+][RussellALT0!="." & RussellALT0==RussellALT0, "RussellxRussell":= 1][is.na(RussellxRussell), RussellxRussell := 0
+][RussellALT0!="." & RussellALT0==CK10_02ALT0, "RussellxCK10_02":= 1][is.na(RussellxCK10_02), RussellxCK10_02 := 0
+][RussellALT0!="." & RussellALT0==CK20_01ALT0, "RussellxCK20_01":= 1][is.na(RussellxCK20_01), RussellxCK20_01 := 0
+][RussellALT0!="." & RussellALT0==CK22_03ALT0, "RussellxCK22_03":= 1][is.na(RussellxCK22_03), RussellxCK22_03 := 0
+][RussellALT0!="." & RussellALT0==CK51_01ALT0, "RussellxCK51_01":= 1][is.na(RussellxCK51_01), RussellxCK51_01 := 0
+                                                                      
+][CK10_02ALT0!="." & CK10_02ALT0==CK02_01ALT0, "CK10_02xCK02_01":= 1][is.na(CK10_02xCK02_01), CK10_02xCK02_01 := 0     
+][CK10_02ALT0!="." & CK10_02ALT0==CK19_03ALT0, "CK10_02xCK19_03":= 1][is.na(CK10_02xCK19_03), CK10_02xCK19_03 := 0
+][CK10_02ALT0!="." & CK10_02ALT0==CK23_08ALT0, "CK10_02xCK23_08":= 1][is.na(CK10_02xCK23_08), CK10_02xCK23_08 := 0
+][CK10_02ALT0!="." & CK10_02ALT0==CK51_09ALT0, "CK10_02xCK51_09":= 1][is.na(CK10_02xCK51_09), CK10_02xCK51_09 := 0
+][CK10_02ALT0!="." & CK10_02ALT0==RussellALT0, "CK10_02xRussell":= 1][is.na(CK10_02xRussell), CK10_02xRussell := 0
+][CK10_02ALT0!="." & CK10_02ALT0==CK10_02ALT0, "CK10_02xCK10_02":= 1][is.na(CK10_02xCK10_02), CK10_02xCK10_02 := 0
+][CK10_02ALT0!="." & CK10_02ALT0==CK20_01ALT0, "CK10_02xCK20_01":= 1][is.na(CK10_02xCK20_01), CK10_02xCK20_01 := 0
+][CK10_02ALT0!="." & CK10_02ALT0==CK22_03ALT0, "CK10_02xCK22_03":= 1][is.na(CK10_02xCK22_03), CK10_02xCK22_03 := 0
+][CK10_02ALT0!="." & CK10_02ALT0==CK51_01ALT0, "CK10_02xCK51_01":= 1][is.na(CK10_02xCK51_01), CK10_02xCK51_01 := 0
+                                                                      
+][CK20_01ALT0!="." & CK20_01ALT0==CK02_01ALT0, "CK20_01xCK02_01":= 1][is.na(CK20_01xCK02_01), CK20_01xCK02_01 := 0     
+][CK20_01ALT0!="." & CK20_01ALT0==CK19_03ALT0, "CK20_01xCK19_03":= 1][is.na(CK20_01xCK19_03), CK20_01xCK19_03 := 0
+][CK20_01ALT0!="." & CK20_01ALT0==CK23_08ALT0, "CK20_01xCK23_08":= 1][is.na(CK20_01xCK23_08), CK20_01xCK23_08 := 0
+][CK20_01ALT0!="." & CK20_01ALT0==CK51_09ALT0, "CK20_01xCK51_09":= 1][is.na(CK20_01xCK51_09), CK20_01xCK51_09 := 0
+][CK20_01ALT0!="." & CK20_01ALT0==RussellALT0, "CK20_01xRussell":= 1][is.na(CK20_01xRussell), CK20_01xRussell := 0
+][CK20_01ALT0!="." & CK20_01ALT0==CK10_02ALT0, "CK20_01xCK10_02":= 1][is.na(CK20_01xCK10_02), CK20_01xCK10_02 := 0
+][CK20_01ALT0!="." & CK20_01ALT0==CK20_01ALT0, "CK20_01xCK20_01":= 1][is.na(CK20_01xCK20_01), CK20_01xCK20_01 := 0
+][CK20_01ALT0!="." & CK20_01ALT0==CK22_03ALT0, "CK20_01xCK22_03":= 1][is.na(CK20_01xCK22_03), CK20_01xCK22_03 := 0
+][CK20_01ALT0!="." & CK20_01ALT0==CK51_01ALT0, "CK20_01xCK51_01":= 1][is.na(CK20_01xCK51_01), CK20_01xCK51_01 := 0
+                                                                      
+][CK22_03ALT0!="." & CK22_03ALT0==CK02_01ALT0, "CK22_03xCK02_01":= 1][is.na(CK22_03xCK02_01), CK22_03xCK02_01 := 0     
+][CK22_03ALT0!="." & CK22_03ALT0==CK19_03ALT0, "CK22_03xCK19_03":= 1][is.na(CK22_03xCK19_03), CK22_03xCK19_03 := 0
+][CK22_03ALT0!="." & CK22_03ALT0==CK23_08ALT0, "CK22_03xCK23_08":= 1][is.na(CK22_03xCK23_08), CK22_03xCK23_08 := 0
+][CK22_03ALT0!="." & CK22_03ALT0==CK51_09ALT0, "CK22_03xCK51_09":= 1][is.na(CK22_03xCK51_09), CK22_03xCK51_09 := 0
+][CK22_03ALT0!="." & CK22_03ALT0==RussellALT0, "CK22_03xRussell":= 1][is.na(CK22_03xRussell), CK22_03xRussell := 0
+][CK22_03ALT0!="." & CK22_03ALT0==CK10_02ALT0, "CK22_03xCK10_02":= 1][is.na(CK22_03xCK10_02), CK22_03xCK10_02 := 0
+][CK22_03ALT0!="." & CK22_03ALT0==CK20_01ALT0, "CK22_03xCK20_01":= 1][is.na(CK22_03xCK20_01), CK22_03xCK20_01 := 0
+][CK22_03ALT0!="." & CK22_03ALT0==CK22_03ALT0, "CK22_03xCK22_03":= 1][is.na(CK22_03xCK22_03), CK22_03xCK22_03 := 0
+][CK22_03ALT0!="." & CK22_03ALT0==CK51_01ALT0, "CK22_03xCK51_01":= 1][is.na(CK22_03xCK51_01), CK22_03xCK51_01 := 0
+                                                                      
+][CK51_01ALT0!="." & CK51_01ALT0==CK02_01ALT0, "CK51_01xCK02_01":= 1][is.na(CK51_01xCK02_01), CK51_01xCK02_01 := 0     
+][CK51_01ALT0!="." & CK51_01ALT0==CK22_03ALT0, "CK51_01xCK22_03":= 1][is.na(CK51_01xCK22_03), CK51_01xCK22_03 := 0
+][CK51_01ALT0!="." & CK51_01ALT0==CK19_03ALT0, "CK51_01xCK19_03":= 1][is.na(CK51_01xCK19_03), CK51_01xCK19_03 := 0
+][CK51_01ALT0!="." & CK51_01ALT0==CK23_08ALT0, "CK51_01xCK23_08":= 1][is.na(CK51_01xCK23_08), CK51_01xCK23_08 := 0
+][CK51_01ALT0!="." & CK51_01ALT0==CK51_09ALT0, "CK51_01xCK51_09":= 1][is.na(CK51_01xCK51_09), CK51_01xCK51_09 := 0
+][CK51_01ALT0!="." & CK51_01ALT0==RussellALT0, "CK51_01xRussell":= 1][is.na(CK51_01xRussell), CK51_01xRussell := 0
+][CK51_01ALT0!="." & CK51_01ALT0==CK10_02ALT0, "CK51_01xCK10_02":= 1][is.na(CK51_01xCK10_02), CK51_01xCK10_02 := 0
+][CK51_01ALT0!="." & CK51_01ALT0==CK20_01ALT0, "CK51_01xCK20_01":= 1][is.na(CK51_01xCK20_01), CK51_01xCK20_01 := 0
+][CK51_01ALT0!="." & CK51_01ALT0==CK51_01ALT0, "CK51_01xCK51_01":= 1][is.na(CK51_01xCK51_01), CK51_01xCK51_01 := 0]
+fwrite(BSAallsnps_fromvcf,"BSAallsnps_fromvcf.csv")
+```
+
+```{r plots, figure.show='hold' }
+BSAallsnps_fromvcf   <- fread("BSAallsnps_fromvcf.csv")
+relationships        <- melt.data.table(BSAallsnps_fromvcf[, c(1,83:163)],id.vars = 1)
+short_relationships  <- relationships[, sum(value),by=variable]
+short_relationships  <- short_relationships[,"relatedness_percentoftotalALTs" := V1/69094*100]
+short_relationships  <- short_relationships[, c("V1","V2") := tstrsplit(variable, "x",fixed=T)]
+parent_relationships <- short_relationships[V1==V2,]
+parent_relationships <- parent_relationships[, V1 := str_replace_all(V1, c("CK02_01"="P1",	"CK19_03"="P2",	"CK23_08"="P3",	"CK51_09"="P4",	"CK09_11"="P5",	"CK17_03"="P6",	"CK18_01"="P7",	"Russell"="P8", "CK10_02"="P9",	"CK20_01"="P10", "CK22_03"="P11",	"CK51_01"="P12",	"CK01_01_01_01"="P13",	"CK02_04"="P14",	"CK06_01"="P15",	"CK10_05"="P16",	"CK13_02"="P17",	"CK15_03"="P18",	"CK15_04"="P19",	"CK16_01"="P20",	"CK17_02"="P21",	"CK26_01"="P22"))]
+
+rel_tile_plot <- ggplot(short_relationships, aes(V1, V2, fill= relatedness_percentoftotalALTs)) + 
+                 geom_tile()
+
+ggsave("parent_relationships.png", plot = last_plot(), width = 22, height = 12, units = c("cm"), dpi = 320)
+
+#relationship dendrogram
+
+
+rel_distance <- dist(parent_relationships,method="euclidean")
+plot(hclust(rel_distance,method="ward.D"), labels=parent_relationships$V1,  ylab="Height", xlab="Relationship of pool parents to each other", type='x')
+```
+
