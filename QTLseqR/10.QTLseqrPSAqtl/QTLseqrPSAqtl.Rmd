@@ -16,6 +16,7 @@ library(ggplot2)
 library(magrittr)
 library(GenomicRanges)
 library(IRanges)
+library(RColorBrewer)
 setDTthreads(1)
 module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 vcftools")
 ```
@@ -26,7 +27,7 @@ vcf_files_2 <- grep(pattern="vcf.gz$", list.files(path="/powerplant/output/genom
 vcf_files <- c(vcf_files_1,vcf_files_2)
 vcf_names <- c("vcf_1","vcf_2")
 
-BSAallsnps          <- fread(paste0(here('QTLseqR/'), "BSAallsnps.csv"))
+BSAallsnps          <- fread(paste0(here('QTLseqR/'), "BSA0.5snps.csv"))#or BSA0.05snps.csv
 BSAallsnps          <- BSAallsnps[, "ChrPos" :=  paste(str_replace_all(CHROM, "chr",""), POS, sep=".")]
 BSAallsnps          <- BSAallsnps[, "poolparent_chrpos" :=  paste(str_replace_all(parent, "_bsa",""),CHROM, POS, sep=".")]
 BSAallsnps          <- BSAallsnps[order(ChrPos),]
@@ -34,8 +35,8 @@ BSAallsnps_ppChrPos <- BSAallsnps[,poolparent_chrpos]
 BSAallsnps_ALT      <- BSAallsnps[,ALT]
 
 #just get those with a window of 5000 snps either side of the peak.
-list_chrbeds_parent  <- grep(pattern="BSAregions_G10000_", list.files(path=here("QTLseqR"), full.names=T), invert=F, value=T)
-names_chrbeds_parent <- str_replace_all(list_chrbeds_parent, c("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/BSAregions_"="", "_bsa.bed"="", "G10000_"=""))
+list_chrbeds_parent  <- grep(pattern="BSAregions_G5000_", list.files(path=here("QTLseqR"), full.names=T), invert=F, value=T)
+names_chrbeds_parent <- str_replace_all(list_chrbeds_parent, c("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/BSAregions_"="", "_bsa.bed"="", "G5000_"=""))
 
 BSAallsnps_fromvcf<- data.table("SAMPLE"=character(), "CHROM"=numeric(), "POS"=numeric(), "REF"=character(), "ALT0"=character(), "ALT1"=character(), "ALT2"=character(), "AD"=character(), "AD0"=numeric(), "AD1"=numeric(), "poolparent"=character(), "poolparent_chrpos"=character())
 
@@ -54,11 +55,15 @@ BSAallsnps_fromvcf <- setnames(BSAallsnps_fromvcf, c("V1","V2","V3","V4","V5","V
 
 BSAallsnps_fromvcf  <- BSAallsnps_fromvcf[, "ChrPos" :=  paste(str_replace_all(CHROM, "chr",""), POS, sep=".")]
 
-#below added to test
-BSAallsnps_fromvcf  <- unique(BSAallsnps_fromvcf, by=c("SAMPLE","poolparent","ChrPos"))
+#look for alleles with AD0 0 and replace the call with "." or n
+BSAallsnps_fromvcf  <- BSAallsnps_fromvcf[AD0==0, `:=` (AD0=".",REF="0")][AD1==0, `:=` (AD1="n",ALT0=".")][AD==".", `:=` (REF=".",ALT0=".",ALT1=".")]
 
-fwrite(BSAallsnps_fromvcf, file = "g10000_BSAgSNPs.csv")
+#below added to test
+#BSAallsnps_fromvcft  <- unique(BSAallsnps_fromvcf, by=c("SAMPLE","poolparent","ChrPos"))
+
+fwrite(BSAallsnps_fromvcf, file = "g5000_BSAgSNPs.csv")
 #BSAallsnps_fromvcf <- fread("g5000_BSAgSNPs.csv")
+
 
 #takes a while to run: search for each ChrPos in BSAallsnps_fromvcf and apply the alternate to the data.table. 
 BSAallsnps_fromvcf_wALT   <- data.table("SAMPLE"=character(), "CHROM"=numeric(), "POS"=numeric(), "REF"=character(), "ALT0"=character(), "ALT1"=character(), "ALT2"=character(), "AD"=character(), "AD0"=numeric(), "AD1"=numeric(), "ChrPos"=numeric(), "bsaqtl_alt"=character(), "poolparent"=character(),"poolparent_chrpos"=character())
@@ -69,14 +74,25 @@ BSAallsnps_fromvcf_wALT  <- BSAallsnps_fromvcf_wALT[str_length(REF)==1,] #take o
 
 #fwrite(BSAallsnps_fromvcf_wALT,file=paste0("BSAregions_",names_chrbeds_parent[chb], ".csv"), append=F)
 fwrite(BSAallsnps_fromvcf_wALT,file=paste0("BSAallsnps_fromvcf_wALT.csv"), append=F)
+BSAallsnps_fromvcf_wALT <- fread("BSAallsnps_fromvcf_wALT.csv")
 
+# if (max(str_count(na.omit(BSAallsnps_fromvcf_wALT$bsaqtl_alt), ","))==1){
+#  BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[, c("qtlALT0", "qtlALT1") := tstrsplit(bsaqtl_alt, ",", fixed=TRUE)]#, "qtlALT2"
+# BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[ALT0==qtlALT0 | ALT0==qtlALT1 , "match":= 1][match != 1, match := 0][AD1 == 0 |AD1==".", match := 0][is.na(match) == TRUE, match := 0]}
+# 
+# if (max(str_count(na.omit(BSAallsnps_fromvcf_wALT$bsaqtl_alt), ","))==2){
+# BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[, c("qtlALT0", "qtlALT1", "qtlALT2") := tstrsplit(bsaqtl_alt, ",", fixed=TRUE)]
+# BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[ALT0==qtlALT0 | ALT0==qtlALT1, "match":= 1][match != 1, match := 0][AD1 == 0 |AD1==".", match := 0][is.na(match) == TRUE, match := 0]}#| ALT0==qtlALT2 |ALT1==qtlALT0 | ALT1==qtlALT1 | ALT1==qtlALT2 | ALT2==qtlALT0 | ALT2==qtlALT1 | ALT2==qtlALT2
+
+
+#matching to all homologues
 if (max(str_count(na.omit(BSAallsnps_fromvcf_wALT$bsaqtl_alt), ","))==1){
  BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[, c("qtlALT0", "qtlALT1") := tstrsplit(bsaqtl_alt, ",", fixed=TRUE)]#, "qtlALT2"
-BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[ALT0==qtlALT0 | ALT0==qtlALT1 , "match":= 1][match != 1, match := 0][AD1 == 0 |AD1==".", match := 0][is.na(match) == TRUE, match := 0]
+BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[ALT0==qtlALT0 |ALT0==qtlALT1 |ALT1==qtlALT0 |ALT1==qtlALT1, "match":= 1]#[match != 1, match := 0][AD1 == 0 |AD1==".", match := 0][is.na(match) == TRUE, match := 0]
 }
 if (max(str_count(na.omit(BSAallsnps_fromvcf_wALT$bsaqtl_alt), ","))==2){
 BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[, c("qtlALT0", "qtlALT1", "qtlALT2") := tstrsplit(bsaqtl_alt, ",", fixed=TRUE)]
-BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[ALT0==qtlALT0 | ALT0==qtlALT1 | ALT0==qtlALT2 |ALT1==qtlALT0 | ALT1==qtlALT1 | ALT1==qtlALT2 | ALT2==qtlALT0 | ALT2==qtlALT1 | ALT2==qtlALT2, "match":= 1][match != 1, match := 0][AD1 == 0 |AD1==".", match := 0][is.na(match) == TRUE, match := 0]
+BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[ALT0 ==qtlALT0 |ALT0 ==qtlALT1 |ALT0 ==qtlALT2 |ALT1==qtlALT0 |ALT1==qtlALT1 |ALT1==qtlALT2, match:= 1][match != 1, match := 0][AD1 == 0 |AD1==".", match := 0][is.na(match) == TRUE, match := 0]#| ALT0==qtlALT2 |ALT1==qtlALT0 | ALT1==qtlALT1 | ALT1==qtlALT2 | ALT2==qtlALT0 | ALT2==qtlALT1 | ALT2==qtlALT2
 }
 
 BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[, match := as.numeric(match)]
@@ -91,45 +107,53 @@ for (b in seq(along=list_chrbeds_parent)){
 BSAallsnps_fromvcf_wALTp <- BSAallsnps_fromvcf_wALT[poolparent==names_chrbeds_parent[b],]
 BSAallsnps_fromvcf_wALTp <- unique(BSAallsnps_fromvcf_wALTp, by=c("poolparent","ChrPos","SAMPLE"))
 
-fwrite(BSAallsnps_fromvcf_wALTp, file=paste0("prediction_", "G10000_", names_chrbeds_parent[b], ".csv"), append=F)
+fwrite(BSAallsnps_fromvcf_wALTp, file=paste0("prediction_", "G5000_", names_chrbeds_parent[b], ".csv"), append=F)
 }
 ```
 
+
+## run plots individually for each pool replacing the fread .csv and .bed parent and its corresponding hashed out samples
+ 
 ```{r run plots individually for each pool replacing the fread .csv and .bed parent and its corresponding hashed out samples, fig.show='hold'}
 poolparents <- c('P1','P2','P3','P4','P9','P10','P11','P12')
 #poolparents <- c('P1')#subset
 
+if (file.exists("G5000_vcf_hits.csv")){
+file.remove("G5000_vcf_hits.csv")#remove file to avoid appending to this file in loop
+}
+
 for (i in poolparents){
-G5000 <-fread(paste0("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/10.QTLseqrPSAqtl/prediction_G50000_",{i},".csv"))
-bed0  <- fread(paste0("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/BSAregions_G50000_",i,"_bsa.bed"))
+G5000 <-fread(paste0("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/10.QTLseqrPSAqtl/prediction_G5000_",{i},".csv"))
+bed0  <- fread(paste0("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/BSAregions_G5000_",i,"_bsa.bed"))
 
 G5000 <- G5000[, SAMPLE := str_replace_all(SAMPLE, c("ER10522_" = "", "SRA_" = "", "ER10400_" = ""))]#clean pedigreeID
 G5000 <- G5000[, SAMPLE := str_replace_all(SAMPLE, c("CK02_01"="P1",	"CK19_03"="P2",	"CK23_08"="P3",	"CK51_09"="P4",	"CK09_11"="P5",	"CK17_03"="P6",	"CK18_01"="P7",	"Russell"="P8", "CK10_02"="P9",	"CK20_01"="P10",	"CK22_03"="P11",	"CK51_01"="P12",	"CK01_01_01_01"="P13",	"CK02_04"="P14",	"CK06_01"="P15",	"CK10_05"="P16",	"CK13_02"="P17",	"CK15_03"="P18",	"CK15_04"="P19",	"CK16_01"="P20",	"CK17_02"="P21",	"CK26_01"="P22"))]
 
 #qtl from beds and individuals contributing to the P1pool
 if (i=="P1"){
-G5000 <- G5000[poolparent=="P1",][SAMPLE=="P1"| SAMPLE=="P21"|SAMPLE=="P10"| SAMPLE=="P22"|SAMPLE=="P12"| SAMPLE=="P18",]
+G5000 <- G5000[poolparent=="P1",][SAMPLE %in% c("P1", "P21","P10","P22","P12","P18"),][SAMPLE=="P1", "EXP" := 0.5][SAMPLE=="P21" , "EXP" := 0.039][SAMPLE=="P10", "EXP" := 0.026][SAMPLE=="P22", "EXP" := 0.026][ SAMPLE=="P12", "EXP" := 0.395][SAMPLE=="P18", "EXP" := 0.013]
 }
+# G5000 <- G5000[poolparent=="P1",][SAMPLE=="P1"| SAMPLE=="P21"|SAMPLE=="P10"| SAMPLE=="P22"|SAMPLE=="P12"| SAMPLE=="P18",][SAMPLE=="P1", "EXP" := 0.5][SAMPLE=="P21" , "EXP" := 0.039][SAMPLE=="P10", "EXP" := 0.026][SAMPLE=="P22", "EXP" := 0.026][ SAMPLE=="P12", "EXP" := 0.395][SAMPLE=="P18", "EXP" := 0.013]
 if (i=="P2"){
-G5000 <- G5000[poolparent=="P2",][SAMPLE=="P2"|SAMPLE=="P9"|SAMPLE=="P16"|SAMPLE=="P17"|SAMPLE=="P19"| SAMPLE=="P12"|SAMPLE=="P22",]
+G5000 <- G5000[poolparent=="P2",][SAMPLE=="P2"|SAMPLE=="P9"|SAMPLE=="P16"|SAMPLE=="P17"|SAMPLE=="P19"| SAMPLE=="P12"|SAMPLE=="P22",][SAMPLE=="P2", "EXP" := 0.5][SAMPLE=="P9", "EXP" := 0.042][SAMPLE=="P16", "EXP" := 0.083][SAMPLE=="P17", "EXP" := 0.056][SAMPLE=="P19", "EXP" := 0.042][SAMPLE=="P12", "EXP" := 0.125][SAMPLE=="P22", "EXP" := 0.153]
 }
 if (i=="P3"){
-G5000 <- G5000[poolparent=="P3", ][SAMPLE=="P3"| SAMPLE=="P13"| SAMPLE=="P18"| SAMPLE=="P20"| SAMPLE=="P11",]
+G5000 <- G5000[poolparent=="P3", ][SAMPLE=="P3"| SAMPLE=="P13"| SAMPLE=="P18"| SAMPLE=="P20"| SAMPLE=="P11",][SAMPLE=="P3", "EXP" := 0.5][SAMPLE=="P13", "EXP" := 0.054][SAMPLE=="P18", "EXP" := 0.243][ SAMPLE=="P20", "EXP" := 0.027][SAMPLE=="P11", "EXP" := 0.176]
 }
 if (i=="P4"){
-G5000 <- G5000[poolparent=="P4", ][SAMPLE=="P4"| SAMPLE=="P14"| SAMPLE=="P15"| SAMPLE=="P9"|SAMPLE=="P19"|SAMPLE=="P11",]
+G5000 <- G5000[poolparent=="P4", ][SAMPLE=="P4"| SAMPLE=="P14"| SAMPLE=="P15"| SAMPLE=="P9"| SAMPLE=="P19"| SAMPLE=="P11",][SAMPLE=="P4", "EXP" := 0.5][ SAMPLE=="P14", "EXP" := 0.027][SAMPLE=="P15", "EXP" := 0.014][SAMPLE=="P9", "EXP" := 0.095][SAMPLE=="P19", "EXP" := 0.081][SAMPLE=="P11", "EXP" := 0.284]
 }
 if (i=="P9"){
-G5000 <- G5000[poolparent=="P9", ][SAMPLE=="P9"| SAMPLE=="P6"| SAMPLE=="P7"| SAMPLE=="P4",] 
+G5000 <- G5000[poolparent=="P9", ][SAMPLE=="P9"| SAMPLE=="P6"| SAMPLE=="P7"| SAMPLE=="P4"| SAMPLE=="P2",] [SAMPLE=="P9", "EXP" := 0.5][ SAMPLE=="P6", "EXP" := 0.295][SAMPLE=="P7", "EXP" := 0.091][SAMPLE=="P4", "EXP" := 0.080][SAMPLE=="P2", "EXP" := 0.034]
 }
 if (i=="P10"){
-G5000 <- G5000[poolparent=="P10", ][SAMPLE=="P10"| SAMPLE=="P1"| SAMPLE=="P5"| SAMPLE=="P8",] 
+G5000 <- G5000[poolparent=="P10", ][SAMPLE=="P10"| SAMPLE=="P1"| SAMPLE=="P5"| SAMPLE=="P8",] [SAMPLE=="P10", "EXP" := 0.5][ SAMPLE=="P1", "EXP" := 0.056][SAMPLE=="P5", "EXP" := 0.194][SAMPLE=="P8", "EXP" := 0.250] 
 }
 if (i=="P11"){
-G5000 <- G5000[poolparent=="P11", ][SAMPLE=="P11"| SAMPLE=="P3"| SAMPLE=="P4", ]
+G5000 <- G5000[poolparent=="P11", ][SAMPLE=="P11"| SAMPLE=="P3"| SAMPLE=="P4", ][SAMPLE=="P11", "EXP" := 0.5][SAMPLE=="P3", "EXP" := 0.191][SAMPLE=="P4", "EXP" := 0.309]
 }
 if (i=="P12"){
-G5000 <- G5000[poolparent=="P12", ][SAMPLE=="P12"| SAMPLE=="P1"| SAMPLE=="P6"| SAMPLE=="P2",] 
+G5000 <- G5000[poolparent=="P12", ][SAMPLE=="P12"| SAMPLE=="P1"| SAMPLE=="P6"| SAMPLE=="P2",] [SAMPLE=="P12", "EXP" := 0.5][SAMPLE=="P1", "EXP" := 0.238][SAMPLE=="P6", "EXP" := 0.190][SAMPLE=="P2", "EXP" := 0.071]
 }
 #lapply(G5000, class)
 #attach names of bedfile region(qtl_names) to G5000
@@ -142,16 +166,23 @@ bed0[subjectHits(coords),]
 G5000_vcf_hits$qtl_name <- bed0[subjectHits(coords), V4]
 G5000_vcf_hits <- as.data.table(G5000_vcf_hits)
 
-
 G5000_vcf_hits <- G5000_vcf_hits[, "sumSNPs_bysample" := na.omit(sum(match)), by = SAMPLE]
 G5000_vcf_hits <- G5000_vcf_hits[, "sumSNPs_byqtlname" := na.omit(sum(match)), by = qtl_name]
 G5000_vcf_hits <- G5000_vcf_hits[, "sumSNPs_bysample_byqtlname" := na.omit(sum(match)), by = list(SAMPLE, qtl_name)]
 G5000_vcf_hits <- G5000_vcf_hits[, "fractionSNPs_bysample_byqtlname" := na.omit(sum(match)/NROW(match)), by = list(SAMPLE, qtl_name)]
 G5000_vcf_hits <- G5000_vcf_hits[, "CHROMn" := as.numeric(str_replace_all(CHROM, "chr", ""))]
 G5000_vcf_hits <- G5000_vcf_hits[, "SAMPLEn" := as.factor(as.numeric(str_replace_all(SAMPLE, "P", "")))]
-wrap_legendtitle <- str_wrap(paste("Parent contributing", paste0("to pool ",i)),20)
-wrap_ylab <- str_wrap(paste0("Fraction of alternate SNPs identical to a 100000 bp region under the QTL peak apex"),32)
-                        
+G5000_vcf_hits <- G5000_vcf_hits[, "SAMPLEexp" := paste(SAMPLE, EXP)]
+
+#fwrite(G5000_vcf_hits, paste0(i, "G5000_vcf_hits.csv"))#for next chunk individuals
+fwrite(G5000_vcf_hits, "G5000_vcf_hits.csv", append=T)#for next chunk for all pools
+
+wrap_legendtitle <- str_wrap(paste("Parents contributing to pool (",i,")"),20) #Parents contributing to pool (",i,"), expected contribution of parent to pool (dashed line) "
+wrap_ylab        <- str_wrap(paste0("Fraction of alternate SNPs identical to a 5000 bp region under the QTL peak apex"),32)
+SAMPLEf          <-  as.factor(G5000_vcf_hits[,SAMPLE])
+EXP              <-  G5000_vcf_hits[,EXP]
+EXPf              <-  as.factor(G5000_vcf_hits[,EXP])
+
 p <- ggplot(data=G5000_vcf_hits, aes(x=reorder(qtl_name,CHROMn),qtl_name, y=fractionSNPs_bysample_byqtlname))+
 geom_jitter(aes(colour=G5000_vcf_hits[,SAMPLE]),alpha=5/10,shape=20, na.rm=T)+
 guides(color= guide_legend(title=wrap_legendtitle))+
@@ -163,10 +194,14 @@ theme(plot.title =element_text(color = "grey20", size = 12, angle = 0, hjust = .
   axis.text.y    =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = 0, face = "plain"),  
   axis.title.x   =element_text(color = "grey20", size = 12, angle = 0, hjust = .5, vjust = 0, face = "plain"),
   axis.title.y   =element_text(color = "grey20", size = 12, angle = 90, hjust = .5, vjust = .5, face = "plain"))+
-  xlab("QTL name (Pool parent, chromosome, peak position)")+
-  ylab(wrap_ylab)
+ 
+  #geom_hline(aes(yintercept=EXP, colour = SAMPLEf), linetype=2, show.legend = T)+
+
+xlab("QTL name (Pool parent, chromosome, peak position)")+
+ylab(wrap_ylab)
 print(p)
-ggsave(paste0(i,"_colourparentsQTLpeakoverlap100000.png"), plot = last_plot(), width = 20, height = 12, units = c("cm"), dpi = 320)
+ggsave(paste0(i,"_colourparentsQTLpeakoverlap5000.png"), plot = last_plot(), width = 20, height = 12, units = c("cm"), dpi = 320)
 }
 ```
+
 
