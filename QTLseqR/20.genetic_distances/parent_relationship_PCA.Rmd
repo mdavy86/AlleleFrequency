@@ -267,9 +267,8 @@ for (i in qtl_names){
   assign(i, setnames(get(i), paste(subset_Bases), subset_title_qtlname)) #setnames qtl_names to bases colunm 
   assign(i, t(get(i)[, subset_title_qtlname, with = FALSE]))#transpose and subset
 
-  assign(i, as.data.table(cbind(rownames(get(i)),get(i))))#get the rownames and paste as a column
-  
-  assign(i, cbind(get(i), apply(get(i)[,-1], 1, paste, collapse="")))
+  irownames<- as.data.table(rownames(get(i)),get(i))#get the rownames and paste as a column
+  assign(i, cbind(irownames, apply(get(i)[,-1], 1, paste, collapse="")))
   write.table(get(i),file=paste0("wide",i,".tsv"),append = FALSE,col.names=F,row.names=F, sep="\t")
 }
 ```
@@ -278,13 +277,14 @@ for (i in qtl_names){
 #  (name of sequence) \t (aligned sequence)
 ```{r}
 site_name <- "wideP12_chr11_16600990.tsv"
-sites <- read.table(file=paste0("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/20.genetic_distances/",site_name), sep="\t",skipNul = FALSE)#read.table reads the T as true.
+sites <- fread(file=paste0("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/20.genetic_distances/",site_name), header=F)
 #sites <- read.table(file="/powerplant/workspace/hrtcdf/github/Stats/human_aligned.txt", header=F, sep="\t") #Example data
 sites<-as.matrix(sites)
 dim(sites)
- 
+
 ### finding the size of data
-n_sample <-  nrow(sites)
+n_sample <- dim(sites)[1]
+n_seq <- nchar(sites[2,2])
 
 #check that each is the same length by changing the vector e.g. sites[x,2]
 tapply(sites[,2], sites[,1], nchar)
@@ -318,17 +318,15 @@ tapply(sites[,2], sites[,1], nchar)
 		} else {
 
 	if(base =="c") {
-	bool[s, le+n_seq*3] <- 1
+	bool[s, le+n_seq*3] <-1
 		} else {
 
-	bool[s, le+n_seq*4] <- 1
+	bool[s, le+n_seq*4] <-1
 	}}}}
 	}}
 
-
 	apply(bool, 1, sum)  # here you can verify the translation
 		# they should show identical values same as n_seq
-	
 ```
 
 ############ PCA 
