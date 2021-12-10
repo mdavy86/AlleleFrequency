@@ -1,5 +1,5 @@
 ---
-title: "Principal Component Analysis applied directly to Sequence Matrix from:Tomokazu Konishi"
+title: "Principal Component Analysis applied directly to Sequence Matrix from Tomokazu Konishi"
 author: "Casey Flay"
 date: "22/11/2021"
 output: html_document
@@ -118,7 +118,7 @@ names_chrbeds_parent <- str_replace_all(list_chrbeds_parent, c("/powerplant/work
 
 BSAallsnps_fromvcf<- data.table("SAMPLE"=character(), "CHROM"=numeric(), "POS"=numeric(), "REF"=character(), "ALT0"=character(), "ALT1"=character(), "ALT2"=character(), "AD"=character(), "AD0"=numeric(), "AD1"=numeric(), "poolparent"=character(), "poolparent_chrpos"=character(),"qtl_name"=character(),"CHROMn"=numeric(),"PPn"=numeric())
 
-#for each pool parent get data from vcf sample files to a single data table.
+#for each parent get data from vcf sample files to a single data table.
 for (b in seq(along=list_chrbeds_parent)){
   for (x in seq(along=vcf_files)){
   Bft <- fread(cmd=paste("bcftools query -f'[%SAMPLE \t%CHROM \t%POS \t%REF \t%ALT{0} \t%ALT{1} \t%ALT{2} \t%AD \t%AD{0} \t%AD{1} \n]'",paste0("-R '",list_chrbeds_parent[b],"'"), vcf_files[x]), fill=T)
@@ -177,9 +177,9 @@ fwrite(BSAallsnps_fromvcf_wALTp, file=paste0("prediction_", "G10000_", names_chr
 test <-  BSAallsnps_fromvcf_wALT[, .N, by=.(qtl_name)]
 ```
 
-## plot PCA one bed at a time for each pool. then compile
+## get one bed at a time for the samples in each pool.
 
-```{r PCA, fig.show='hold'}
+```{r samples in each pool}
 poolparents <- c('P1','P2','P3','P4','P9','P10','P11','P12')
 poolparents <- c('P12')#subset P12 also gets i right when testing individual lines in loop.
 
@@ -195,7 +195,7 @@ pred <-fread(paste0("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/20.genetic
 pred <- pred[, SAMPLE := str_replace_all(SAMPLE, c("ER10522_" = "", "SRA_" = "", "ER10400_" = "","ER10508_"=""))]#clean pedigreeID
 pred <- pred[, SAMPLE := str_replace_all(SAMPLE, c("CK02_01"="P1",	"CK19_03"="P2",	"CK23_08"="P3",	"CK51_09"="P4",	"CK09_11"="P5",	"CK17_03"="P6",	"CK18_01"="P7",	"Russell"="P8", "CK10_02"="P9",	"CK20_01"="P10",	"CK22_03"="P11",	"CK51_01"="P12",	"CK01_01_01_01"="P13",	"CK02_04"="P14",	"CK06_01"="P15",	"CK10_05"="P16",	"CK13_02"="P17",	"CK15_03"="P18",	"CK15_04"="P19",	"CK16_01"="P20",	"CK17_02"="P21",	"CK26_01"="P22"))]
 
-#qtl from beds and individuals contributing to the P1pool #should all these be %chin%?
+#qtl from beds and individuals contributing to the P1pool 
 if (i=="P1"){pred <- pred[poolparent=="P1",][SAMPLE %chin% c("P1","P21","P10","P22","P12","P18"),]}
 if (i=="P2"){pred <- pred[poolparent=="P2",][SAMPLE %chin% c("P2","P9","P16","P17","P19","P12","P22"),]}
 if (i=="P3"){pred <- pred[poolparent=="P3", ][SAMPLE %chin% c("P3","P13","P18","P20","P11","P13"),]}
@@ -206,99 +206,92 @@ if (i=="P11"){pred <- pred[poolparent=="P11", ][SAMPLE %chin% c("P11","P3","P4")
 if (i=="P12"){pred <- pred[poolparent=="P12", ][SAMPLE %chin% c("P12","P1","P6","P2"),]}
 # ##[SAMPLE %in% c("P1","P21"),] works the same as [SAMPLE=="P1"| SAMPLE=="P21",]
 
-#lapply(pred, class)
-#attach names of bedfile region(qtl_names) to pred
-
-# vcfGR  <- GRanges(seqnames = pred$CHROM, ranges=IRanges(start = pred$POS, end = pred$POS))
-# bedGR  <- GRanges(seqnames = bed0$V1, ranges=IRanges(start = bed0$V2, end = bed0$V3, names = bed0$V4))
-# coords <- findOverlaps(vcfGR, bedGR)
-# vcfGR[queryHits(coords)]
-# pred_vcf_hits <- pred[queryHits(coords),]
-# bed0[subjectHits(coords),]
-# pred_vcf_hits$qtl_name <- bed0[subjectHits(coords), V4]
-# pred_vcf_hits <- as.data.table(pred_vcf_hits)
-# pred_vcf_hits <- pred_vcf_hits[, "CHROMn" := as.numeric(str_replace_all(CHROM, "chr", ""))]
-# pred_vcf_hits <- pred_vcf_hits[, "SAMPLEn" := as.factor(as.numeric(str_replace_all(SAMPLE, "P", "")))]
-
 fwrite(pred, paste0(i, "G10000_vcf_hits.csv"))#for next chunk individual pools
 fwrite(pred, "G10000_vcf_hits.csv", append=T)#for  all pools
 }
 ```
 
 ## transform data to fit PCA script format this is altered to fit 2 homologues(strands) from each parent contributing to the pool. as the PCA will include one of the parents, its closest match will be found on the PCA plot and doesn't need to be calculated against the parent itself.
-```{r transform, options(digits=9)}
-fileP <- ("P12G10000_vcf_hits.csv")
+```{r transform, options(digits=10)}
+pool  <- "P12"
+fileP <- paste0("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/20.genetic_distances/",pool,"G10000_vcf_hits.csv")
 sites <- fread(fileP)
 
-sites  <- sites[AD==".", `:=` (REF="-",ALT0="-",ALT1="-")][AD1=="n", `:=` (ALT0="-")][REF=="", `:=` (REF="-")][ALT1==".", `:=` (ALT1="-")][str_length(REF)>1, `:=` (REF="-")][str_length(ALT0)>1, `:=` (ALT0="-")][str_length(ALT1)>1, `:=` (ALT1="-")]
+## addpool parent as a sample Pxx
+samplepoolsites  <- sites[SAMPLE==pool] #use the pool parent to select chromosome and position sites for Pxx
+samplepoolsites  <- samplepoolsites[bsaqtl_ref=="", `:=` (bsaqtl_ref=REF,bsaqtl_alt=ALT0)] #fill missing ref sites. 
+samplepoolsites  <- samplepoolsites[, `:=` (SAMPLE = paste0(poolparent,"pp"), REF=bsaqtl_ref,ALT0=bsaqtl_alt)]#change sample name to pxx, and place sample pool calls to ref and alt0.
+sites            <- rbind(sites,samplepoolsites); rm(samplepoolsites)#attach sample pool sites to parent sites.
+px               <- unique(sites$SAMPLE) #get sample names
 
-#collapse parents ref and alt into single strand giving REF,ALT0 strands at pos 1,2. there are only 20 
-#remove_uneven <- as.data.table(table(sites$poolparent_chrpos))
-#ru            <- unlist(remove_uneven[N<max(N), .(V1)])
-#sites         <- sites[poolparent_chrpos!=ru,]
+sites  <- sites[AD0=="0", `:=` (REF="-")][AD==".", `:=` (REF="-",ALT0="-",ALT1="-")][REF=="", `:=` (REF="-")][ALT0==".", `:=` (ALT0="-")][ALT1==".", `:=` (ALT1="-")][str_length(REF)>1, `:=` (REF="-")][str_length(ALT0)>1, `:=` (ALT0="-")][str_length(ALT1)>1, `:=` (ALT1="-")][bsaqtl_ref=="", bsaqtl_ref := "-"][bsaqtl_alt=="", bsaqtl_alt := "-"]
 
-#get nucleotide string based on seperate samples then merge stackedsitesPx with key ChrPos
-#mrgd <- data.table("SAMP_ppqtlname"=character(), "Bases"=character(), "ChrPos"=numeric())
-px   <- unique(sites$SAMPLE)
-
-  
+#stack reference and alt sourced homologue columns 
 for (i in seq(along=px)){
-assign(paste0("REFsites",px[i]), sites[SAMPLE==px[i],  .(poolparent, SAMPLE,  qtl_name, REF,ChrPos)][,"R0A1" :="0"])
-assign(paste0("REFsites",px[i]), setnames(get(paste0("REFsites",px[i]), envir = .GlobalEnv), c("REF"), c("Bases")))
-assign(paste0("ALTsites",px[i]), sites[SAMPLE==px[i],  .(poolparent, SAMPLE,  qtl_name, ALT0,ChrPos)][,"R0A1" :="1"]) 
-assign(paste0("ALTsites",px[i]), setnames(get(paste0("ALTsites",px[i]), envir = .GlobalEnv), c("ALT0"), c("Bases")))
-assign(paste0("stackedsites",px[i]), rbind(get(paste0("REFsites",px[i]), envir = .GlobalEnv), get(paste0("ALTsites",px[i]), envir = .GlobalEnv)))
+###REF give new column for ref and change name of REF to bases(pp) so it can match alts
+assign(paste0("REFsites",px[i]), sites[SAMPLE==px[i],  .(poolparent, SAMPLE,  qtl_name, REF,ChrPos,POS)][,"R0A1" :=0])
+assign(paste0("REFsites",px[i]), setnames(get(paste0("REFsites",px[i]), envir = .GlobalEnv), c("REF"), paste0("Bases",px[i])))
 
-assign(paste0("stackedsites",px[i]), get(paste0("stackedsites",px[i]), envir = .GlobalEnv)[, "SAMP_ppqtlname_R0A1" := paste(SAMPLE,qtl_name,R0A1, sep="_")][,.(SAMP_ppqtlname_R0A1, Bases, ChrPos, R0A1, qtl_name)][Bases==".",Bases:="-"])
+###alts give new column for alt and change name of REF to bases(pp) so it can match ref
+assign(paste0("ALTsites",px[i]), sites[SAMPLE==px[i],  .(poolparent, SAMPLE,  qtl_name, ALT0,ChrPos,POS)][,"R0A1" :=1])
+assign(paste0("ALTsites",px[i]), setnames(get(paste0("ALTsites",px[i]), envir = .GlobalEnv), c("ALT0"), paste0("Bases",px[i])))
 
-#setkey for bind
-assign(paste0("stackedsites",px[i]), setkey(get(paste0("stackedsites",px[i]), envir = .GlobalEnv), ChrPos))
-#mrgd <- data.table(
-tmp <- get(paste0("stackedsites",px[i]), envir = .GlobalEnv)
-setkey(tmp,ChrPos)
+##rbind ref and alts to make a column containing both.
+assign(paste0("stackedsites",px[i]), rbind.DataTable(get(paste0("REFsites",px[i]), envir = .GlobalEnv), get(paste0("ALTsites",px[i]), envir = .GlobalEnv)))
+
+#Give new names to columns for merge
+old_names <- names(get(paste0("REFsites",px[i]), envir = .GlobalEnv))
+new_names <- c(paste0("poolparent","_",px[i]), paste0("SAMPLE","_",px[i]), paste0("qtl_name","_",px[i]), paste0("BasesP12pp","_",px[i]), paste0("ChrPos"),paste0( "POS"), paste0("R0A1"))
+               
+assign(paste0("stackedsites",px[i]), setnames(get(paste0("stackedsites",px[i]), envir = .GlobalEnv),c(old_names),c(new_names)))
 }
 
-##Adjust this portion manually for each stackedsitesPx parent contributing to mrgd
-mrgd      <- merge.data.table(stackedsitesP1,stackedsitesP2, by = c("ChrPos","R0A1"), all=T)
-mrgd      <- merge.data.table(mrgd,stackedsitesP12, by = c("ChrPos","R0A1"), all=T)
-
-
-
-
-
-#attach the SAMP_ppqtlname_R0A1 name to sequence title instead of e.g bases.x
-subset_title   <- str_subset(names(mrgd), "SAMP*")
-subset_Bases   <- str_subset(names(mrgd), "Base*")
-for (ix in seq(along=subset_title)){
-st   <- subset_title[ix]
-stt   <- mrgd[[st]]
-print(stt)
-
-#mrgd <- setnames(mrgd, c(subset_Bases[io]), c(subset_title[io]))
+##Adjust the merge.data.table portion manually for each stackedsitesPx parent contributing to mrgd or use a if statement
+if (pool=="P12"){
+mrgd      <- merge.data.table(stackedsitesP12pp,stackedsitesP1, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(mrgd,stackedsitesP2, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(mrgd,stackedsitesP12, by = c("ChrPos","R0A1"), all=F)
 }
 
-qtl_names      <- unique(mrgd$qtl_name)
+#attach the SAMP_ppqtlname_R0A1 name to sequence title instead of e.g bases.x use multiples of inserted for each data.table merged for the subset_title and mrgdt.
+#transpose to wide for each qtl_name over all merged parent columns
+#may need to adjust 5 to a qtl_names column if the next pool doesn't fit the a qtl column into 5.
+qtl_names       <- unlist(na.omit(unique(mrgd[,c(5)])))
 for (i in qtl_names){
-assign(paste(i), as.data.table(mrgd[qtl_name.x==i]))
+  assign(i, as.data.table(mrgd[qtl_name_P12pp==i]))#subset for each qtl.
+  subset_title    <- as.character(t(c(get(i)[1,c(5)],get(i)[1,c(10)],get(i)[1,c(15)],get(i)[1,c(20)])))#get names of each qtl and attach sample name for bases column
+  subset_Bases    <- str_subset(unlist(as.data.frame(t(names(get(i))))), "Bases*")#transpose, get old column names
+  #subset_Bases    <- str_replace_all(subset_Bases,)#get the sample name from bases  
+  subset_title_qtlname <- str_c(subset_title,subset_Bases, sep="_")#new row names with qtl_name
+  
+  assign(i, setnames(get(i,envir = .GlobalEnv), paste(subset_Bases), subset_title_qtlname)) #setnames qtl_names to bases colunm 
+  assign(i, t(get(i,envir = .GlobalEnv)[, subset_title_qtlname, with = FALSE]))#transpose and subset
 
-#fwrite(mrgd_w,file=paste0("wide",i,fileP))
+  assign(i, as.data.table(cbind(rownames(get(i,envir = .GlobalEnv)),get(i,envir = .GlobalEnv))))#get the rownames and paste as a column
+
+  assign(i, cbind(get(i ,envir = .GlobalEnv), apply(get(i,envir = .GlobalEnv)[,-1], 1, paste, collapse="")))#make a single string of baces
+  #write.table(get(i),file=paste0("wide",i,".tsv"),append = FALSE,col.names=F,row.names=F, sep="\t")
 }
-#transpose to wide for each qtl_name over all merged parents columns
 ```
-
+# reading the aligned sequence data:
+#  the data have to be formatted in tab-separated text with two colums,
+#  (name of sequence) \t (aligned sequence)
 ```{r}
-sites <- stackedsitesP1
-#sites <- read.table(file="/powerplant/workspace/hrtcdf/github/Stats/human_aligned.txt", header=F, sep="\t")#Example data
+site_name <- "wideP12_chr11_16600990.tsv"
+sites <- fread(file=paste0("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/20.genetic_distances/",site_name), header=F)
+#sites <- read.table(file="/powerplant/workspace/hrtcdf/github/Stats/human_aligned.txt", header=F, sep="\t") #Example data
 sites<-as.matrix(sites)
 dim(sites)
- 
+
 ### finding the size of data
 n_sample <- dim(sites)[1]
-n_seq    <- nchar(sites[2,2])
-
+n_seq <- nchar(sites[2,2])
+n_seq
+#check that each is the same length by changing the vector e.g. sites[x,2]
+#tapply(sites[,2], sites[,1], nchar)
 ```
 
-### translation of the sequence to bollean vectors 
+### translation of the sequence to boolean vectors 
 ```{r}
 	bool <- array(0, dim=c(n_sample, 5*n_seq))
 
@@ -333,35 +326,28 @@ n_seq    <- nchar(sites[2,2])
 	}}}}
 	}}
 
-
 	apply(bool, 1, sum)  # here you can verify the translation
 		# they should show identical values same as n_seq
 ```
 
-### PCA 
-## centering : the center can be replaced to certain group
+############ PCA 
 ```{r}
+## centering : the center can be replaced to certain group
 	center<- apply(bool, 2, mean)
 	diffs<-sweep(bool, 2, center)
-          diffs<-diffs/2^0.5  # dounble counting
+	diffs <- diffs/(2^0.5)   
+        # compensating the doubled counts in Euclidean distance metrics
 
 	# checking distribution of the distances
-   		distance <- dist(diffs, method = "euclidean", upper = TRUE)
-   		distance <-as.matrix(distance)
-   		distance <- distance/n_seq^0.5
-	 hist(distance)
+    		dist<- (apply(diffs^2, 1, sum))^0.5
+        	qqnorm(dist)
+		hist(dist)
 
-	# you can specify the range of sequence used in the calculation by replacing the removed range with zero;
-	# for example, this will reproduce the result shown in the test.
-   #		 diffs[,c(1:47, 1:47+n_seq, 1:47+2*n_seq,1:47+3*n_seq,1:47+4*n_seq)  ] <- 0   # removes the first 47 sites.
-   #		 diffs[, c(248:n_seq, 248:n_seq+n_seq, 248:n_seq+2*n_seq,248:n_seq+3*n_seq, 248:n_seq+4*n_seq) ] <- 0   # removes the last 53 sites.
-```
 ### PCA core
-```{r}
 	res_svd <- svd(diffs)  #
 	str(res_svd)
-			Left <- res_svd$u		# the left singular vectors
-			Right <- res_svd$v		# the right singular vectors
+			Left <- res_svd$u		# the left singular vector
+			Right <- res_svd$v		# the right singular vector
 			sqL <- diag(res_svd$d)		# diagonal matrix of the singular values
 
  	### calculatinf of pc's 
@@ -370,29 +356,26 @@ n_seq    <- nchar(sites[2,2])
 
 	rownames(sPC_nuc)<- colnames(bool) 
  	rownames(sPC_sample)<- rownames(bool) 
-```
 
-```{r}
 #### output to text files
 	write.table(sPC_sample, file="sPC_sample.txt", sep="\t")
 	write.table(sPC_nuc, file="sPC_nuc.txt", sep="\t")
-```
+
 
 #### output to png images
-```{r sample}
+# sample
 	png(width=2100, height=2300, pointsize = 80, file="sPC_sample_12.png")
 	  par(lwd=4, mex=0.6, mai=c(4,4,3,0.2))
   	  plot( sPC_sample [,1], sPC_sample[,2], col="gray50" ,  pch=1, main="sample", xlab="", ylab="" , axes=T)
 	dev.off()
-```
 
-```{r sites}
+# sites
 	png(width=2100, height=2300, pointsize = 80, file="sPC_seq_1.png")
 	  par(lwd=4, mex=0.6, mai=c(4,4,3,0.2))
 
  	 colors <- c(rgb(red=10, green=100, blue=255, alpha=255, maxColorValue =255), rgb(red=140, green=255, blue=100, alpha=255, maxColorValue =255),
 	    rgb(red=255, green=50, blue=10, alpha=255, maxColorValue =255), rgb(red=100, green=100, blue=100, alpha=255, maxColorValue =255))
-		# color of presentation: I hope this set is recognizable for colorblind persons. 
+# color of presentation: I hope this set is recognizable for colorblind persons. 
 
 	 plot(1:n_seq, sPC_nuc[1:n_seq,1],  pch="", xlab="sites", ylab="sPC1", main="sites")
 	    text(1:n_seq, sPC_nuc[1:n_seq,1],  labels=1:n_seq  , cex=0.8, col= colors[1] )
@@ -408,15 +391,17 @@ n_seq    <- nchar(sites[2,2])
 	  par(lwd=4, mex=0.6, mai=c(4,4,3,0.2))
 	  plot(1:20, (res_svd$d/sum(res_svd$d)*100)[1:20], pch=1, type="b",  lty=3, ylab="(%)", xlab="PC", main="Contribution", col="gray50")
 	dev.off()
+
+# contribution tangent regression 
+
+	theta  <- ((length(res_svd$d)+1):1-1)/(length(res_svd$d)+1)*(0.5*pi)
+	tans <- tan(theta)
+
+	png(width=2100, height=2300, pointsize = 80, file="tangent.png")
+	  par(lwd=4, mex=0.6, mai=c(4,4,3,0.2))
+	 plot((tans), c( res_svd$d, 0)/sum(res_svd$d)*100, xlab="Tangent", ylab="Contribution (%)")
+		#abline(0, sum(res_svd$d)/sum(tans)/sum(res_svd$d)*100, lty=3)
+	     z <- line ((res_svd$d/sum(res_svd$d)*100 )[1:10] ~ (tans )[1:10]  )
+		abline(coef(z), lty=3)
+	dev.off()
 ```
-
-#there is no openGL in powerplant
-```{r 3D presentation}
-  #library("rgl")
-
- plot3d( sPC_sample [,1], sPC_sample[,2], sPC_sample[,3], col="black", pch=NA, main="Human", xlab="sPC1", ylab="sPC2", zlab="sPC3", type="p")
-   text3d( sPC_sample [,1], sPC_sample[,2], sPC_sample[,3], texts=sites[,1], cex=.5, col="gray50", font=1)
-   writeWebGL(width=700) 
-   #powerplant doesn't have directGL workaround?
-```
-
