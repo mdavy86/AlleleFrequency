@@ -265,26 +265,9 @@ for (i in qtl_names){
   subset_title_qtlname <- str_c(subset_title, subset_Bases, sep="_") # new row names with qtl_name
   
   assign(i, setnames(get(i), subset_Bases, subset_title_qtlname)) #setnames qtl_names to bases column 
-  assign(i, t(get(i)[, subset_title_qtlname, with = FALSE])) #transpose and subset
-
-  irownames<- as.data.table(rownames(get(i)),get(i)) #get the rownames and paste as a column
-  assign(i, cbind(irownames, apply(get(i), 1, paste, collapse="")))
   
-  tmp2 <- get(i)
-  
-  ## Redo...
-  assign(i, mrgd[qtl_name_P12pp==i]) #subset for each qtl.
-  subset_title    <- as.character(get(i)[1, c(5,10,15,20)]) # get names of each qtl and attach sample name for bases column
-  subset_Bases    <- str_subset(names(get(i)), "Bases*")    # transpose, get old column names
-  #subset_Bases   <- str_replace_all(subset_Bases,)         # get the sample name from bases  
-  subset_title_qtlname <- str_c(subset_title, subset_Bases, sep="_") # new row names with qtl_name
-  
-  assign(i, setnames(get(i), subset_Bases, subset_title_qtlname)) #setnames qtl_names to bases column 
-  
-  tmp <- apply(get(i)[, ..subset_title_qtlname], 2, paste, collapse="")
-  tmp3 <- data.table(names(tmp), unname(tmp))
-  
-  expect_equal(tmp2, tmp3)
+  tmp <- apply(get(i)[, ..subset_title_qtlname], 2, paste, collapse="") # paste SNPs together into tmp
+  assign(i, data.table(names(tmp), unname(tmp)))                        # assign to i
   
   write.table(get(i),file=paste0("wide",i,".tsv"),append = FALSE,col.names=F,row.names=F, sep="\t")
 }
