@@ -171,7 +171,7 @@ for (b in seq(along=list_chrbeds_parent)){
 BSAallsnps_fromvcf_wALTp <- BSAallsnps_fromvcf_wALT[poolparent==names_chrbeds_parent[b],]
 BSAallsnps_fromvcf_wALTp <- unique(BSAallsnps_fromvcf_wALTp, by=c("poolparent","ChrPos","SAMPLE"))
 
-fwrite(BSAallsnps_fromvcf_wALTp, file=paste0("prediction_", "G10000_", basename(names_chrbeds_parent[b]), ".csv"), append=F)
+fwrite(BSAallsnps_fromvcf_wALTp, file=paste0("prediction_", "G10000_", names_chrbeds_parent[b], ".csv"), append=F)
 }
 
 test <-  BSAallsnps_fromvcf_wALT[, .N, by=.(qtl_name)]
@@ -258,19 +258,18 @@ mrgd      <- merge.data.table(mrgd,stackedsitesP12, by = c("ChrPos","R0A1"), all
 #may need to adjust 5 to a qtl_names column if the next pool doesn't fit the a qtl column into 5.
 qtl_names       <- unlist(na.omit(unique(mrgd[,c(5)])))
 for (i in qtl_names){
-  assign(i, as.data.table(mrgd[qtl_name_P12pp==i])) # subset for each qtl.
-  subset_title    <- as.character(t(c(get(i)[1,c(5)],get(i)[1,c(10)],get(i)[1,c(15)],get(i)[1,c(20)]))) #get names of each qtl and attach sample name for bases column
+  assign(i, as.data.table(mrgd[qtl_name_P12pp==i]))#subset for each qtl.
+  subset_title    <- as.character(t(c(get(i)[1,c(5)],get(i)[1,c(10)],get(i)[1,c(15)],get(i)[1,c(20)])))#get names of each qtl and attach sample name for bases column
   subset_Bases    <- str_subset(unlist(as.data.frame(t(names(get(i))))), "Bases*")#transpose, get old column names
   #subset_Bases    <- str_replace_all(subset_Bases,)#get the sample name from bases  
-  subset_title_qtlname <- str_c(subset_title,subset_Bases, sep="_") #new row names with qtl_name
+  subset_title_qtlname <- str_c(subset_title,subset_Bases, sep="_")#new row names with qtl_name
   
-  assign(i, setnames(get(i), subset_Bases, subset_title_qtlname)) #setnames qtl_names to bases colunm 
-  assign(i, t(get(i)[, subset_title_qtlname, with = FALSE])) #transpose and subset
+  assign(i, setnames(get(i), paste(subset_Bases), subset_title_qtlname)) #setnames qtl_names to bases colunm 
+  assign(i, t(get(i)[, subset_title_qtlname, with = FALSE]))#transpose and subset
 
-  assign(i, as.data.table(cbind(rownames(get(i)),get(i)))) #get the rownames and paste as a column
-
-  assign(i, cbind(get(i), apply(get(i)[,-1], 1, paste, collapse=""))) #make a single string of bases
-  #write.table(get(i),file=paste0("wide",i,".tsv"),append = FALSE,col.names=F,row.names=F, sep="\t")
+  irownames<- as.data.table(rownames(get(i)),get(i))#get the rownames and paste as a column
+  assign(i, cbind(irownames, apply(get(i)[,-1], 1, paste, collapse="")))
+  write.table(get(i),file=paste0("wide",i,".tsv"),append = FALSE,col.names=F,row.names=F, sep="\t")
 }
 ```
 # reading the aligned sequence data:
@@ -286,9 +285,9 @@ dim(sites)
 ### finding the size of data
 n_sample <- dim(sites)[1]
 n_seq <- nchar(sites[2,2])
-n_seq
+
 #check that each is the same length by changing the vector e.g. sites[x,2]
-#tapply(sites[,2], sites[,1], nchar)
+tapply(sites[,2], sites[,1], nchar)
 ```
 
 ### translation of the sequence to boolean vectors 
@@ -404,4 +403,11 @@ n_seq
 	     z <- line ((res_svd$d/sum(res_svd$d)*100 )[1:10] ~ (tans )[1:10]  )
 		abline(coef(z), lty=3)
 	dev.off()
+```
+
+```{r}
+#euclidiean distance
+x<- read.table("sPC_sample.txt")
+#### output to ggplot
+
 ```
