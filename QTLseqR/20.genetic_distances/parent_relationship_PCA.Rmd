@@ -181,7 +181,7 @@ test <-  BSAallsnps_fromvcf_wALT[, .N, by=.(qtl_name)]
 
 ```{r samples in each pool}
 poolparents <- c('P1','P2','P3','P4','P9','P10','P11','P12')
-poolparents <- c('P12')#subset P12 also gets i right when testing individual lines in loop.
+#poolparents <- c('P12')#subset P12 also gets i right when testing individual lines in loop.
 
 if (file.exists("G10000_vcf_hits.csv")){
 file.remove("G10000_vcf_hits.csv")#remove file to avoid appending to this file in loop
@@ -211,11 +211,14 @@ fwrite(pred, "G10000_vcf_hits.csv", append=T)#for  all pools
 }
 ```
 
-## transform data to fit PCA script format this is altered to fit 2 homologues(strands) from each parent contributing to the pool. as the PCA will include one of the parents, its closest match will be found on the PCA plot and doesn't need to be calculated against the parent itself.
+## transform data to fit PCA script format this is altered to fit 2 homologues(strands) from each parent contributing to the pool. as the PCA will include one of the parents, its closest match will be found on the PCA plot and doesn't need to be calculated as a distance between the parents and pool.
 ```{r transform, options(digits=10)}
 pool  <- "P12"
+write(pool, file="tmp_pool") #to be used in the next plotting chunk based on this one.
+
 fileP <- paste0("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/20.genetic_distances/",pool,"G10000_vcf_hits.csv")
 sites <- fread(fileP)
+
 
 ## addpool parent as a sample Pxx
 samplepoolsites  <- sites[SAMPLE==pool] #use the pool parent to select chromosome and position sites for Pxx
@@ -247,6 +250,41 @@ assign(paste0("stackedsites",px[i]), setnames(get(paste0("stackedsites",px[i]), 
 }
 
 ##Adjust the merge.data.table portion manually for each stackedsitesPx parent contributing to mrgd or use a if statement
+if (pool=="P1"){
+mrgd      <- merge.data.table(stackedsitesP1pp,stackedsitesP1, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(mrgd,stackedsitesP10, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(mrgd,stackedsitesP12, by = c("ChrPos","R0A1"), all=F)
+}
+if (pool=="P2"){
+mrgd      <- merge.data.table(stackedsitesP2pp,stackedsitesP2, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(mrgd,stackedsitesP19, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(mrgd,stackedsitesP12, by = c("ChrPos","R0A1"), all=F)
+}
+if (pool=="P3"){
+mrgd      <- merge.data.table(stackedsitesP3pp,stackedsitesP3, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(mrgd,stackedsitesP11, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(mrgd,stackedsitesP13, by = c("ChrPos","R0A1"), all=F)
+}
+if (pool=="P4"){
+mrgd      <- merge.data.table(stackedsitesP4pp,stackedsitesP4, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(mrgd,stackedsitesP9, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(mrgd,stackedsitesP11, by = c("ChrPos","R0A1"), all=F)
+}
+if (pool=="P9"){
+mrgd      <- merge.data.table(stackedsitesP9pp,stackedsitesP9, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(mrgd,stackedsitesP2, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(mrgd,stackedsitesP4, by = c("ChrPos","R0A1"), all=F)
+}
+if (pool=="P10"){
+mrgd      <- merge.data.table(stackedsitesP10pp,stackedsitesP10, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(mrgd,stackedsitesP8, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(mrgd,stackedsitesP1, by = c("ChrPos","R0A1"), all=F)
+}
+if (pool=="P11"){
+mrgd      <- merge.data.table(stackedsitesP11pp,stackedsitesP11, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(mrgd,stackedsitesP3, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(mrgd,stackedsitesP4, by = c("ChrPos","R0A1"), all=F)
+}
 if (pool=="P12"){
 mrgd      <- merge.data.table(stackedsitesP12pp,stackedsitesP1, by = c("ChrPos","R0A1"), all=F)
 mrgd      <- merge.data.table(mrgd,stackedsitesP2, by = c("ChrPos","R0A1"), all=F)
@@ -256,28 +294,40 @@ mrgd      <- merge.data.table(mrgd,stackedsitesP12, by = c("ChrPos","R0A1"), all
 #attach the SAMP_ppqtlname_R0A1 name to sequence title instead of e.g bases.x use multiples of inserted for each data.table merged for the subset_title and mrgdt.
 #transpose to wide for each qtl_name over all merged parent columns
 #may need to adjust 5 to a qtl_names column if the next pool doesn't fit the a qtl column into 5.
-qtl_names       <- unlist(na.omit(unique(mrgd[,c(5)])))
-for (i in qtl_names){
-  assign(i, as.data.table(mrgd[qtl_name_P12pp==i]))#subset for each qtl.
-  subset_title    <- as.character(t(c(get(i)[1,c(5)],get(i)[1,c(10)],get(i)[1,c(15)],get(i)[1,c(20)])))#get names of each qtl and attach sample name for bases column
-  subset_Bases    <- str_subset(unlist(as.data.frame(t(names(get(i))))), "Bases*")#transpose, get old column names
-  #subset_Bases    <- str_replace_all(subset_Bases,)#get the sample name from bases  
-  subset_title_qtlname <- str_c(subset_title,subset_Bases, sep="_")#new row names with qtl_name
-  
-  assign(i, setnames(get(i), paste(subset_Bases), subset_title_qtlname)) #setnames qtl_names to bases colunm 
-  assign(i, t(get(i)[, subset_title_qtlname, with = FALSE]))#transpose and subset
 
+qtl_names       <- unlist(na.omit(unique(mrgd[,c(5)])))
+mrgd_names      <- names(mrgd[,c(5)])
+mrgd_names      <- "qtl_name_P12pp"
+
+for (i in qtl_names){
+  assign(i, mrgd[mrgd_names==i]) #subset for each qtl.
+  
+    if(((ncol(mrgd)-2)/5)==4){
+    subset_title    <- as.character(get(i)[1, c(5,10,15,20)])} # get names of each qtl, attach sample name for bases column
+    if(((ncol(mrgd)-2)/5)==5){
+    subset_title    <- as.character(get(i)[1, c(5,10,15,20,25)])}    
+  
+  subset_Bases    <- str_subset(names(get(i)), "Bases*")    # get old column names
+  #subset_Bases   <- str_replace_all(subset_Bases,)         # get the sample name from bases  
+  subset_title_qtlname <- str_c(subset_title, subset_Bases, sep="_") # new row names with qtl_name
+
+  assign(i, setnames(get(i), subset_Bases, subset_title_qtlname)) #setnames qtl_names to bases column 
+  assign(i, t(get(i)[, subset_title_qtlname, with = FALSE])) #transpose and subset
   irownames<- as.data.table(rownames(get(i)),get(i))#get the rownames and paste as a column
-  assign(i, cbind(irownames, apply(get(i)[,-1], 1, paste, collapse="")))
+  assign(i, cbind(irownames, apply(get(i), 1, paste, collapse="")))
   write.table(get(i),file=paste0("wide",i,".tsv"),append = FALSE,col.names=F,row.names=F, sep="\t")
 }
-```
-# reading the aligned sequence data:
-#  the data have to be formatted in tab-separated text with two colums,
-#  (name of sequence) \t (aligned sequence)
-```{r}
-site_name <- "wideP12_chr11_16600990.tsv"
-sites <- fread(file=paste0("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/20.genetic_distances/",site_name), header=F)
+#```
+
+##reading the aligned sequence data: the data have to be formatted in tab-separated text with two colums, (name of sequence) \t (aligned sequence)
+
+#```{r, running this chunk is dependant on running the above chunk for each pool, eval=TRUE}
+
+if(file.exists("sPC_sample_QTLs.txt")) {file.remove("sPC_sample_QTLs.txt")}
+
+for (ii in qtl_names){
+# sites <- fread(file=paste0("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/20.genetic_distances/",{i}), header=F)
+sites <- get(ii)
 #sites <- read.table(file="/powerplant/workspace/hrtcdf/github/Stats/human_aligned.txt", header=F, sep="\t") #Example data
 sites<-as.matrix(sites)
 dim(sites)
@@ -288,10 +338,10 @@ n_seq <- nchar(sites[2,2])
 
 #check that each is the same length by changing the vector e.g. sites[x,2]
 tapply(sites[,2], sites[,1], nchar)
-```
+
 
 ### translation of the sequence to boolean vectors 
-```{r}
+
 	bool <- array(0, dim=c(n_sample, 5*n_seq))
 
 	colnames(bool) <- c(paste("A_", 1:n_seq, sep=""),paste("T_", 1:n_seq, sep=""),paste("G_", 1:n_seq, sep=""),paste("C_", 1:n_seq, sep=""),paste("N_", 1:n_seq, sep=""))
@@ -327,21 +377,20 @@ tapply(sites[,2], sites[,1], nchar)
 
 	apply(bool, 1, sum)  # here you can verify the translation
 		# they should show identical values same as n_seq
-```
+
 
 ############ PCA 
-```{r}
+
 ## centering : the center can be replaced to certain group
 	center<- apply(bool, 2, mean)
-	diffs<-sweep(bool, 2, center)
-	diffs <- diffs/(2^0.5)   
-        # compensating the doubled counts in Euclidean distance metrics
+	diffs<-sweep(bool, 2, center) #applying the mean to bool(the matrix) to move the center closer to zero for diffs
+	diffs <- diffs/(2^0.5) # compensating the doubled counts in Euclidean distance metrics
 
-	# checking distribution of the distances
-    		dist<- (apply(diffs^2, 1, sum))^0.5
-        	qqnorm(dist)
-		hist(dist)
-
+	# checking distribution of the Euclidean distances
+#    		dist<- (apply(diffs^2, 1, sum))^0.5
+#         	qqnorm(dist)
+# 		hist(dist)
+		
 ### PCA core
 	res_svd <- svd(diffs)  #
 	str(res_svd)
@@ -349,7 +398,7 @@ tapply(sites[,2], sites[,1], nchar)
 			Right <- res_svd$v		# the right singular vector
 			sqL <- diag(res_svd$d)		# diagonal matrix of the singular values
 
- 	### calculatinf of pc's 
+ 	### calculating pc's 
 	sPC_nuc  	<-	 Right %*% sqL / (n_sample^0.5)
 	sPC_sample	 <-	 Left %*% sqL/ (n_seq^0.5)
 
@@ -360,8 +409,43 @@ tapply(sites[,2], sites[,1], nchar)
 	write.table(sPC_sample, file="sPC_sample.txt", sep="\t")
 	write.table(sPC_nuc, file="sPC_nuc.txt", sep="\t")
 
+#### append to another file for each qtl analysed.
+sPC_sample <- data.table(row.names(sPC_sample), sPC_sample)
+sPC_sample <- sPC_sample[, "qtl" := ii]
+fwrite(sPC_sample, file="sPC_sample_QTLs.txt", sep="\t", append=T,col.names=F)
 
-#### output to png images
+}
+```
+
+## plot all qtl for each pool
+
+```{r plot qtl for pool, eval=TRUE}
+PCA_of_poolQTL  <- fread("sPC_sample_QTLs.txt")
+PCA_of_poolQTL  <- PCA_of_poolQTL[, c("s1", "s2","s3","s4","s5") := tstrsplit(V1, "_", fixed=TRUE)]
+PCA_of_poolQTL  <- setnames(PCA_of_poolQTL, names(PCA_of_poolQTL), c("V1","PC1" ,"PC2", "V4", "V5", "QTL_name", "s1", "s2", "s3", "s4", "Parent_sample"))
+
+pool            <- names(fread("tmp_pool"))
+
+PCA_of_poolQTLp <- function(A) {
+    ggplot(PCA_of_poolQTL, aes(x=PC2, y=PC1, colour=QTL_name, shape=Parent_sample))+#fill=s5
+    geom_point(size= 4)+  # shape = 21, alpha = 3/10, 
+    scale_shape_manual(values=c(0,3,4,5)) +    
+   ggtitle(paste0(pool,"sPC_sample_QTLs")) +
+    theme_classic()+
+    theme(plot.title   = element_text(hjust = 0.5, vjust = 0.5, size=14),
+          axis.title.y = element_text(hjust = 0.5, vjust = 0.5, size=12),
+          axis.title.x = element_text(hjust = 0.5, vjust = 0,   size=12),
+          axis.text.x  = element_text(angle = 0,   vjust = 0.5, size=12),
+          axis.text.y  = element_text(vjust = 0,   hjust = 0.5, size=12))
+}
+p <- PCA_of_poolQTLp()
+#ggsave(paste0("sPC_sample_QTLs",pool), plot = p)
+p
+
+```
+
+#### output to png images generated by Tomokazu Konishi
+```{r}
 # sample
 	png(width=2100, height=2300, pointsize = 80, file="sPC_sample_12.png")
 	  par(lwd=4, mex=0.6, mai=c(4,4,3,0.2))
