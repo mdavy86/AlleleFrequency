@@ -58,7 +58,7 @@ rm(ER,ER5)
 
 ##get parents from all files
 ```{r get parents from all files, eval=FALSE}
-Russell_sol_bam <- Rualn_bams[V1 =='ER10522_Russell']# russell adjusted to a single russell file as it should be.
+Russell_sol_bam <- Rualn_bams[V1 =='ER10522_Russell']# russell adjusted to a single russell file.
 CK02_01_sol_bam <- Rualn_bams[PedigreeItem=='CK02_01']
 CK10_02_sol_bam <- Rualn_bams[PedigreeItem=='CK10_02']
 CK19_03_sol_bam <- Rualn_bams[PedigreeItem=='CK19_03']
@@ -87,7 +87,7 @@ bsub_cmd     <- glue("bsub -n 8 -o {Ol} -e {Oe} {cmd}")
 #system(bsub_cmd)
 }
 ```
-## generate vcfs
+## generate vcfs of parent files which are sole parents 
 ```{r run bcftools mpileup, eval=FALSE}
 submit_mpileup <- function(reference = "*.fa.gz", output = c(), bamfiles = c(), job.init = "asub", job.opts = "-q normal") {
   cmd          <- "bcftools mpileup -B -I -Q 20 -f {reference} --excl-flags 'UNMAP,SECONDARY,QCFAIL,DUP' -a {mpileuptags} {bamfiles} -Ou  |bcftools call -f {bcfcalltags} -p {pvalThres} -m -A -Oz -o {output} && bcftools index {output}" 
@@ -116,7 +116,7 @@ vcf_files  <- grep(pattern="*_alone.vcf$", list.files(path=here("QTLseqR/20.gene
 list_chrbeds_parent  <- grep(pattern="BSAregions_G5000_", list.files(path=here("QTLseqR"), full.names=T), invert=F, value=T)
 names_chrbeds_parent <- str_replace_all(list_chrbeds_parent, c("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/BSAregions_"="", "_bsa.bed"="", "G5000_"=""))
 
-BSAallsnps_fromvcf<- data.table("SAMPLE"=character(), "CHROM"=numeric(), "POS"=numeric(), "REF"=character(), "ALT0"=character(), "ALT1"=character(), "ALT2"=character(), "AD"=character(), "AD0"=numeric(), "AD1"=numeric(), "poolparent"=character(), "poolparent_chrpos"=character(),"qtl_name"=character(),"CHROMn"=numeric(),"PPn"=numeric())
+BSAallsnps_fromvcf   <- data.table("SAMPLE"=character(), "CHROM"=numeric(), "POS"=numeric(), "REF"=character(), "ALT0"=character(), "ALT1"=character(), "ALT2"=character(), "AD"=character(), "AD0"=numeric(), "AD1"=numeric(), "poolparent"=character(), "poolparent_chrpos"=character(),"qtl_name"=character(),"CHROMn"=numeric(),"PPn"=numeric())
 
 #for each parent get data from vcf sample files to a single data table.
 for (b in seq(along=list_chrbeds_parent)){
@@ -152,8 +152,8 @@ BSAallsnps          <- BSAallsnps[, "ChrPos" :=  paste(str_replace_all(CHROM, "c
 BSAallsnps          <- BSAallsnps[, "poolparent_chrpos" :=  paste(str_replace_all(parent, "_bsa",""),CHROM, POS, sep=".")]
 BSAallsnps          <- BSAallsnps[order(ChrPos),]
 BSAallsnps_ppChrPos <- BSAallsnps[,poolparent_chrpos]
-BSAallsnps_ALT      <- BSAallsnps[,ALT]
-BSAallsnps_REF      <- BSAallsnps[,REF]
+BSAallsnps_ALT      <- BSAallsnps[,r1ALT]#changed from ALT as line 53 FSTs/WTLseqR/QTLseqR_ALL_pools.Rmd uses the r for reference which is the pool.
+BSAallsnps_REF      <- BSAallsnps[,r1REF]
 
 #takes a while to run: search for each ChrPos in BSAallsnps_fromvcf and apply the alternate to the data.table.
 BSAallsnps_fromvcf_wALT   <- data.table("SAMPLE"=character(), "CHROM"=numeric(), "POS"=numeric(), "REF"=character(), "ALT0"=character(), "ALT1"=character(), "ALT2"=character(), "AD"=character(), "AD0"=numeric(), "AD1"=numeric(), "ChrPos"=numeric(), "bsaqtl_alt"=character(), "poolparent"=character(),"poolparent_chrpos"=character())
@@ -213,7 +213,11 @@ fwrite(pred, "G10000_vcf_hits.csv", append=T)#for  all pools
 
 ## transform data to fit PCA script format this is altered to fit 2 homologues(strands) from each parent contributing to the pool. as the PCA will include one of the parents, its closest match will be found on the PCA plot and doesn't need to be calculated as a distance between the parents and pool.
 ```{r transform, options(digits=10)}
-pool  <- "P12"
+pool  <- c('P1','P2','P3','P4','P9','P10','P11','P12')
+#pool  <- "P12" #subset
+for (pooli in pool){
+pool <- pooli
+
 write(pool, file="tmp_pool") #to be used in the next plotting chunk based on this one.
 
 fileP <- paste0("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/20.genetic_distances/",pool,"G10000_vcf_hits.csv")
@@ -222,7 +226,7 @@ sites <- fread(fileP)
 
 ## addpool parent as a sample Pxx
 samplepoolsites  <- sites[SAMPLE==pool] #use the pool parent to select chromosome and position sites for Pxx
-samplepoolsites  <- samplepoolsites[bsaqtl_ref=="", `:=` (bsaqtl_ref=REF,bsaqtl_alt=ALT0)] #fill missing ref sites. 
+samplepoolsites  <- samplepoolsites[bsaqtl_ref=="", `:=` (bsaqtl_ref=REF,bsaqtl_alt="-")] #fill missing ref sites. #bsaqtl_alt=ALT0
 samplepoolsites  <- samplepoolsites[, `:=` (SAMPLE = paste0(poolparent,"pp"), REF=bsaqtl_ref,ALT0=bsaqtl_alt)]#change sample name to pxx, and place sample pool calls to ref and alt0.
 sites            <- rbind(sites,samplepoolsites); rm(samplepoolsites)#attach sample pool sites to parent sites.
 px               <- unique(sites$SAMPLE) #get sample names
@@ -249,7 +253,6 @@ new_names <- c(paste0("poolparent","_",px[i]), paste0("SAMPLE","_",px[i]), paste
 assign(paste0("stackedsites",px[i]), setnames(get(paste0("stackedsites",px[i]), envir = .GlobalEnv),c(old_names),c(new_names)))
 }
 
-##Adjust the merge.data.table portion manually for each stackedsitesPx parent contributing to mrgd or use a if statement
 if (pool=="P1"){
 mrgd      <- merge.data.table(stackedsitesP1pp,stackedsitesP1, by = c("ChrPos","R0A1"), all=F)
 mrgd      <- merge.data.table(mrgd,stackedsitesP10, by = c("ChrPos","R0A1"), all=F)
@@ -257,7 +260,7 @@ mrgd      <- merge.data.table(mrgd,stackedsitesP12, by = c("ChrPos","R0A1"), all
 }
 if (pool=="P2"){
 mrgd      <- merge.data.table(stackedsitesP2pp,stackedsitesP2, by = c("ChrPos","R0A1"), all=F)
-mrgd      <- merge.data.table(mrgd,stackedsitesP19, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(mrgd,stackedsitesP9, by = c("ChrPos","R0A1"), all=F)
 mrgd      <- merge.data.table(mrgd,stackedsitesP12, by = c("ChrPos","R0A1"), all=F)
 }
 if (pool=="P3"){
@@ -296,11 +299,11 @@ mrgd      <- merge.data.table(mrgd,stackedsitesP12, by = c("ChrPos","R0A1"), all
 #may need to adjust 5 to a qtl_names column if the next pool doesn't fit the a qtl column into 5.
 
 qtl_names       <- unlist(na.omit(unique(mrgd[,c(5)])))
-mrgd_names      <- names(mrgd[,c(5)])
-mrgd_names      <- "qtl_name_P12pp"
+mrgd_names      <- names(mrgd)[5]
+#mrgd_names      <- "qtl_name_P12pp"
 
 for (i in qtl_names){
-  assign(i, mrgd[mrgd_names==i]) #subset for each qtl.
+  assign(i, mrgd[get(mrgd_names)==i]) #subset for each qtl.
   
     if(((ncol(mrgd)-2)/5)==4){
     subset_title    <- as.character(get(i)[1, c(5,10,15,20)])} # get names of each qtl, attach sample name for bases column
@@ -413,35 +416,46 @@ tapply(sites[,2], sites[,1], nchar)
 sPC_sample <- data.table(row.names(sPC_sample), sPC_sample)
 sPC_sample <- sPC_sample[, "qtl" := ii]
 fwrite(sPC_sample, file="sPC_sample_QTLs.txt", sep="\t", append=T,col.names=F)
-
 }
-```
+#```
 
 ## plot all qtl for each pool
 
-```{r plot qtl for pool, eval=TRUE}
+#```{r plot qtl for pool, eval=TRUE}
 PCA_of_poolQTL  <- fread("sPC_sample_QTLs.txt")
 PCA_of_poolQTL  <- PCA_of_poolQTL[, c("s1", "s2","s3","s4","s5") := tstrsplit(V1, "_", fixed=TRUE)]
 PCA_of_poolQTL  <- setnames(PCA_of_poolQTL, names(PCA_of_poolQTL), c("V1","PC1" ,"PC2", "V4", "V5", "QTL_name", "s1", "s2", "s3", "s4", "Parent_sample"))
+#change factors for shape plot order
+unique(PCA_of_poolQTL$Parent_sample)
+if(pool=="P1"){PCA_of_poolQTL  <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P1pp", "P1", "P10", "P12"))]}
+if(pool=="P2"){PCA_of_poolQTL  <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P2pp", "P2", "P9", "P12"))]}
+if(pool=="P3"){PCA_of_poolQTL  <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P3pp", "P3", "P11", "P13"))]}
+if(pool=="P4"){PCA_of_poolQTL  <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P4pp", "P4", "P9", "P11"))]}
+if(pool=="P9"){PCA_of_poolQTL  <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P9pp", "P9", "P2", "P4"))]}
+if(pool=="P10"){PCA_of_poolQTL <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P10pp", "P10", "P1", "P8"))]}
+if(pool=="P11"){PCA_of_poolQTL <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P11pp", "P11", "P3", "P4"))]}
+if(pool=="P12"){PCA_of_poolQTL <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P12pp", "P12", "P1", "P2"))]}
+#example to remove df$var2 <- factor(df$var2, levels=c("P1pp", "P1", "P10", "P12"))
 
 pool            <- names(fread("tmp_pool"))
 
 PCA_of_poolQTLp <- function(A) {
     ggplot(PCA_of_poolQTL, aes(x=PC2, y=PC1, colour=QTL_name, shape=Parent_sample))+#fill=s5
     geom_point(size= 4)+  # shape = 21, alpha = 3/10, 
-    scale_shape_manual(values=c(0,3,4,5)) +    
-   ggtitle(paste0(pool,"sPC_sample_QTLs")) +
+    scale_shape_manual(values=c(16,1,3,4)) +    
+    #ggtitle(paste0(pool,"sPC_sample_QTLs")) +
     theme_classic()+
     theme(plot.title   = element_text(hjust = 0.5, vjust = 0.5, size=14),
           axis.title.y = element_text(hjust = 0.5, vjust = 0.5, size=12),
           axis.title.x = element_text(hjust = 0.5, vjust = 0,   size=12),
           axis.text.x  = element_text(angle = 0,   vjust = 0.5, size=12),
-          axis.text.y  = element_text(vjust = 0,   hjust = 0.5, size=12))
-}
+          axis.text.y  = element_text(vjust = 0,   hjust = 0.5, size=12))+
+    guides(shape = guide_legend(str_wrap(paste0("Sample pool ",pool, "pp (colour filled)", " and parents contributing to pool (no fill)"), 23), order=1), color = guide_legend("QTL name", order=2))
+    }
 p <- PCA_of_poolQTLp()
-#ggsave(paste0("sPC_sample_QTLs",pool), plot = p)
+ggsave(paste0("PCA_poolparents_vs_pool_",pool,".png"), plot = p)
 p
-
+}
 ```
 
 #### output to png images generated by Tomokazu Konishi
