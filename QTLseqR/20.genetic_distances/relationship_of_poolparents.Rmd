@@ -4,7 +4,7 @@ author: "Casey Flay"
 date: "07/10/2021"
 output: html_document
 editor_options: 
-  chunk_output_type: console
+  chunk_output_type: inline
 ---
 
 ```{r setup, include=FALSE}
@@ -22,7 +22,7 @@ setDTthreads(1)
 module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 vcftools")
 ```
 
-```{r allele differences between parents at QTL sites}
+```{r allele differences between parents at QTL sites old for dendrogram, eval=FALSE}
 vcf_files_1 <-grep(pattern="vcf.gz$", list.files(path="/powerplant/output/genomic/plant/Actinidia/chinensis/Resequencing/Variants/Russell_V2a.chromosomes.and.unassigned/ER10522", full.names=T), invert=F, value=T)
 vcf_files_2 <- grep(pattern="vcf.gz$", list.files(path="/powerplant/output/genomic/plant/Actinidia/chinensis/Resequencing/Variants/Russell_V2a.chromosomes.and.unassigned/ER10400_and_SRA", full.names=T), invert=F, value=T)
 vcf_files <- c(vcf_files_1,vcf_files_2); rm(vcf_files_1,vcf_files_2)
@@ -34,13 +34,13 @@ assign(i, fread(paste0(here("QTLseqR/"),"BSAregions_G10000_",i,"_bsa.bed")))
 }
 pplist <- rbindlist(list(P1, P2, P3, P4, P9, P10, P11, P12)); rm(P1, P2, P3, P4, P9, P10, P11, P12)
 
-#write.table(pplist,"allbeds.bed",quote=FALSE, col.names=FALSE, row.names=FALSE, sep="\t")#edit manually to exclude overlapped regions and duplicates
+write.table(pplist,"allbeds.bed", quote=FALSE, col.names=FALSE, row.names=FALSE, sep="\t") #edit manually to exclude overlapped regions and duplicates
 
 BSAallsnps_fromvcf<- data.table("SAMPLE"=character(), "CHROM"=numeric(), "POS"=numeric(), "REF"=character(), "ALT0"=character(), "ALT1"=character(), "AD"=character(), "AD0"=numeric(), "AD1"=numeric())
 
 #pull data from vcf files to a single data table.
 for (x in seq(along=vcf_files)){
-    BSAallsnps_fromvcf_tmp <- fread(cmd=paste("bcftools query -f'[%SAMPLE \t%CHROM \t%POS \t%REF \t%ALT{0} \t%ALT{1} \t%AD \t%AD{0} \t%AD{1} \n]' -R '/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/10.QTLseqrPSAqtl/allbeds.bed'", vcf_files[x]), fill=F)
+    BSAallsnps_fromvcf_tmp <- fread(cmd=paste("bcftools query -f'[%SAMPLE \t%CHROM \t%POS \t%REF \t%ALT{0} \t%ALT{1} \t%AD \t%AD{0} \t%AD{1} \n]' -R '/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/20.genetic_distances/allbeds.bed'", vcf_files[x]), fill=F)
   #retrieve just SNP sites below
   BSAallsnps_fromvcf     <- rbind(BSAallsnps_fromvcf_tmp, BSAallsnps_fromvcf, use.names=FALSE)
 }
@@ -56,8 +56,8 @@ BSAallsnps_fromvcf <- setnames(BSAallsnps_fromvcf, c(names(BSAallsnps_fromvcf)),
 
 BSAallsnps_fromvcf  <- BSAallsnps_fromvcf[, "ChrPos" :=  paste(str_replace_all(CHROM, "chr",""), POS, sep=".")]
 BSAallsnps_fromvcf  <- BSAallsnps_fromvcf[str_length(REF)==1,] #take out long reference allele strings
-#below added to test
-sapply(BSAallsnps_fromvcf, class)
+
+#sapply(BSAallsnps_fromvcf, class) #correct class?
 
 SAMPLE_list <- c("CK02_01","CK19_03","CK23_08","CK51_09","Russell","CK10_02","CK20_01","CK22_03","CK51_01")
 for (i in SAMPLE_list){
@@ -179,8 +179,7 @@ BSAallsnps_fromvcf <- BSAallsnps_fromvcf[
 ][CK51_01ALT0!="." & CK51_01ALT0==CK51_01ALT0, "CK51_01xCK51_01":= 1][is.na(CK51_01xCK51_01), CK51_01xCK51_01 := 0]
 fwrite(BSAallsnps_fromvcf,"BSAallsnps_fromvcf.csv")
 ```
-
-```{r plots, figure.show='hold' }
+```{r plots old for dendrogram, eval=FALSE, figure.show='hold' }
 BSAallsnps_fromvcf   <- fread("BSAallsnps_fromvcf.csv")
 relationships        <- melt.data.table(BSAallsnps_fromvcf[, c(1,83:163)],id.vars = 1)
 short_relationships  <- relationships[, sum(value),by=variable]
@@ -199,5 +198,199 @@ ggsave("parent_relationships.png", plot = last_plot(), width = 22, height = 12, 
 
 rel_distance <- dist(parent_relationships,method="euclidean")
 plot(hclust(rel_distance,method="ward.D"), labels=parent_relationships$V1,  ylab="Height", xlab="Relationship of pool parents to each other", type='x')
+```
+
+## data from individual parents for PCA of difference between each
+
+```{r data from individual parents for PCA of difference between each}
+vcf_files  <- grep(pattern="*_alone.vcf$", list.files(path=here("QTLseqR/20.genetic_distances"), full.names=T), invert=F, value=T)
+
+#combine regions from seperate parent beds made in QTLseqrPSAqtl into a single bed file with no overlap.
+ip <- c("P1","P2","P3","P4","P9","P10","P11","P12")
+for (i in ip){
+assign(i, fread(paste0(here("QTLseqR/"),"BSAregions_G10000_",i,"_bsa.bed")))
+}
+iplist <- rbindlist(list(P1, P2, P3, P4, P9, P10, P11, P12)); rm(P1, P2, P3, P4, P9, P10, P11, P12)
+iplist <- iplist[V4!="P2_chr27_10731"&V4!="P4_chr10_10000036" &V4!="P12_chr17_10000025",] #edit to exclude overlapped qtl
+write.table(iplist,"allbeds.bed", quote=FALSE, col.names=FALSE, row.names=FALSE, sep="\t") 
+
+
+BSAallsnps_fromvcf   <- data.table("SAMPLE"=character(), "CHROM"=numeric(), "POS"=numeric(), "REF"=character(), "ALT0"=character(), "ALT1"=character(), "ALT2"=character(), "AD"=character(), "AD0"=numeric(), "AD1"=numeric(),"CHROMn"=numeric())
+
+#for each parent get data from vcf sample files to a single data table.
+  for (x in seq(along=vcf_files)){
+  Bft <- fread(cmd=paste("bcftools query -f'[%SAMPLE \t%CHROM \t%POS \t%REF \t%ALT{0} \t%ALT{1} \t%ALT{2} \t%AD \t%AD{0} \t%AD{1} \n]'",paste0("-R '/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/20.genetic_distances/allbeds.bed'"), vcf_files[x]), fill=T)
+
+  Bft <- setnames(Bft, c("V1","V2","V3","V4","V5","V6","V7","V8","V9","V10"), c("SAMPLE","CHROM", "POS", "REF", "ALT0", "ALT1", "ALT2","AD", "AD0", "AD1"))
+  
+  Bft <- Bft[, "CHROMn" := as.numeric(str_replace_all(CHROM, "chr", ""))]
+  
+  BSAallsnps_fromvcf     <- rbind(Bft, BSAallsnps_fromvcf, use.names=FALSE)
+  }
+
+#rename samples to match the pool parent
+BSAallsnps_fromvcf <- BSAallsnps_fromvcf[, SAMPLE := str_replace_all(SAMPLE, c("ER10522_" = "", "SRA_" = "", "ER10400_" = "","ER10508_"=""))]#clean pedigreeID
+BSAallsnps_fromvcf <- BSAallsnps_fromvcf[, SAMPLE := str_replace_all(SAMPLE, c("CK02_01"="P1",	"CK19_03"="P2",	"CK23_08"="P3",	"CK51_09"="P4",	"CK09_11"="P5",	"CK17_03"="P6",	"CK18_01"="P7",	"Russell"="P8", "CK10_02"="P9",	"CK20_01"="P10",	"CK22_03"="P11",	"CK51_01"="P12",	"CK01_01_01_01"="P13",	"CK02_04"="P14",	"CK06_01"="P15",	"CK10_05"="P16",	"CK13_02"="P17",	"CK15_03"="P18",	"CK15_04"="P19",	"CK16_01"="P20",	"CK17_02"="P21",	"CK26_01"="P22"))]
+
+BSAallsnps_fromvcf  <- BSAallsnps_fromvcf[AD1=="1", `:=` (ALT0="-")][AD0=="0", `:=` (REF="-")][AD==".", `:=` (REF="-",ALT0="-",ALT1="-")][REF=="", `:=` (REF="-")][ALT0==".", `:=` (ALT0="-")][ALT1==".", `:=` (ALT1="-")][str_length(REF)>1, `:=` (REF="-")][str_length(ALT0)>1, `:=` (ALT0="-")][str_length(ALT1)>1, `:=` (ALT1="-")]
+
+#stack ref and alt
+BSAallsnps_fromvcf         <- BSAallsnps_fromvcf[, "chrpos" := paste(CHROMn,POS,sep=".")]
+BSAallsnps_fromvcf_ref     <- BSAallsnps_fromvcf[,"allele" := "ref"][,.(SAMPLE,REF,chrpos,allele)] 
+BSAallsnps_fromvcf_alt     <- BSAallsnps_fromvcf[,"allele" := "alt"][,.(SAMPLE,ALT0,chrpos,allele)]
+BSAallsnps_fromvcf_Randalt <- rbind(BSAallsnps_fromvcf_ref,BSAallsnps_fromvcf_alt, use.names=FALSE)
+BSAallsnps_fromvcf_Randalt <- setkeyv(BSAallsnps_fromvcf_Randalt, c("chrpos","allele")) #setkey for merging with allele for keyby in merge
+sample_names               <- unique(BSAallsnps_fromvcf_Randalt$SAMPLE)
+for (i in seq(along=sample_names)){
+  assign(sample_names[i], BSAallsnps_fromvcf_Randalt[SAMPLE==sample_names[i],.(SAMPLE,REF,chrpos,allele)])
+  assign(sample_names[i], setnames(get(sample_names[i]), "REF", as.character(get(sample_names[i])[1,.(SAMPLE)])))
+  #assign(sample_names[i], setkey(get(sample_names[i]), c("chrpos","allele")))
+}
+BSAallsnps_fromvcf_Randalt_m   <- P1[P2][P3][P4][P8][P9][P10][P11][P12][P13] #merge the data tables
+BSAallsnps_fromvcf_Randalt_m   <- BSAallsnps_fromvcf_Randalt_m[SAMPLE != "",] #remove missing data from read gaps
+BSAallsnps_fromvcf_Randalt_m_t <- t(BSAallsnps_fromvcf_Randalt_m[, c(2,6,8,10,12,14,16,18,20,22)])#transpose and subset columns
+#t1                             <- BSAallsnps_fromvcf_Randalt_m_t[1:10,c(1,2,3,4,5)] #test to see if it looks ok?
+rownames                       <- c("P1","P2","P3","P4","P8","P9","P10","P11","P12","P13") #rownames for cbind
+BSAallsnps_fromvcf_Randalt_m_t <- cbind(rownames, apply(BSAallsnps_fromvcf_Randalt_m_t, 1, paste, collapse="")) #bind columns
+
+write.table(BSAallsnps_fromvcf_Randalt_m_t,file=paste0("BSAallsnps_fromvcf_Randalt_m_t.tsv"),append = FALSE,col.names=T,row.names=F, sep="\t")
+# BSAallsnps_fromvcf_Randalt_m_t_dt <- as.data.table(BSAallsnps_fromvcf_Randalt_m_t)
+# 
+# fwrite(BSAallsnps_fromvcf_Randalt_m_t_dt, "BSAallsnps_fromvcf_Randalt_m_t_dt.csv",row.names=F, col.names=F, sep="\t")
+# is.matrix(BSAallsnps_fromvcf_Randalt_m_t)
+
+```
+
+## PCA analysis of distance between pool parents
+```{r transform, options(digits=10), fig.show='hold'}
+sites    <-fread(file="/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/20.genetic_distances/BSAallsnps_fromvcf_Randalt_m_t.tsv", header=F
+                 )
+sites <- sites[2:10,]
+
+if(file.exists("sPC_sample_QTLs.txt")) {file.remove("sPC_sample_QTLs.txt")}
+
+#sites <- read.table(file="/powerplant/workspace/hrtcdf/github/Stats/human_aligned.txt", header=F, sep="\t") #Example data
+sites<-as.matrix(sites)
+dim(sites)
+
+### finding the size of data
+n_sample <- dim(sites)[1]
+n_seq <- nchar(sites[2,2])
+
+#check that each is the same length by changing the vector e.g. sites[x,2]
+tapply(sites[,2], sites[,1], nchar)
+
+
+### translation of the sequence to boolean vectors 
+
+	bool <- array(0, dim=c(n_sample, 5*n_seq))
+
+	colnames(bool) <- c(paste("A_", 1:n_seq, sep=""),paste("T_", 1:n_seq, sep=""),paste("G_", 1:n_seq, sep=""),paste("C_", 1:n_seq, sep=""),paste("N_", 1:n_seq, sep=""))
+	rownames(bool) <- sites[ ,1]
+
+
+  for (s in 1:n_sample){
+       se <- sites[s, 2]
+       se <- tolower(se)
+
+	for (le in  1:n_seq){
+	 base <- substr(se, le,le)
+ 
+	if(base =="a") {
+	bool[s, le] <-1
+		} else {
+
+	if(base =="t") {
+	bool[s, le+n_seq] <-1
+		} else {
+
+	if(base =="g") {
+	bool[s, le+n_seq*2] <-1
+		} else {
+
+	if(base =="c") {
+	bool[s, le+n_seq*3] <-1
+		} else {
+
+	bool[s, le+n_seq*4] <-1
+	}}}}
+	}}
+
+	apply(bool, 1, sum)  # here you can verify the translation
+		# they should show identical values same as n_seq
+
+
+############ PCA 
+
+## centering : the center can be replaced to certain group
+	center<- apply(bool, 2, mean)
+	diffs<-sweep(bool, 2, center) #applying the mean to bool(the matrix) to move the center closer to zero for diffs
+	diffs <- diffs/(2^0.5) # compensating the doubled counts in Euclidean distance metrics
+
+	# checking distribution of the Euclidean distances
+#    		dist<- (apply(diffs^2, 1, sum))^0.5
+#         	qqnorm(dist)
+# 		hist(dist)
+		
+### PCA core
+	res_svd <- svd(diffs)  #
+	str(res_svd)
+			Left <- res_svd$u		# the left singular vector
+			Right <- res_svd$v		# the right singular vector
+			sqL <- diag(res_svd$d)		# diagonal matrix of the singular values
+
+ 	### calculating pc's 
+	sPC_nuc  	<-	 Right %*% sqL / (n_sample^0.5)
+	sPC_sample	 <-	 Left %*% sqL/ (n_seq^0.5)
+
+	rownames(sPC_nuc)<- colnames(bool) 
+ 	rownames(sPC_sample)<- rownames(bool) 
+
+#### output to text files
+	write.table(sPC_sample, file="sPC_sample.txt", sep="\t")
+	write.table(sPC_nuc, file="sPC_nuc.txt", sep="\t")
+
+#### append to another file for each qtl analysed.
+sPC_sample <- data.table(row.names(sPC_sample), sPC_sample)
+fwrite(sPC_sample, file="sPC_sample_QTLs.txt", sep="\t", append=T,col.names=F)
+
+#```
+
+# plot all qtl for each pool
+
+#```{r plot qtl for pool, eval=TRUE}
+PCA_of_poolQTL  <- fread("sPC_sample_QTLs.txt")
+PCA_of_poolQTL  <- PCA_of_poolQTL[, c("s1") := tstrsplit(V1, "_", fixed=TRUE)]
+PCA_of_poolQTL  <- setnames(PCA_of_poolQTL, names(PCA_of_poolQTL), c("Parent","PC1" ,"PC2", "V4", "V5", "V6", "s1", "s2", "s3", "s4", "Parent_sample"))
+#change factors for shape plot order
+PCA_of_poolQTL  <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P1", "P2", "P3", "P4", "P8", "P9", "P10", "P11", "P12", "P13"))]
+
+#example to remove df$var2 <- factor(df$var2, levels=c("P1sp", "P1", "P10", "P12"))
+
+
+PC1_contribution    <- round((res_svd$d/sum(res_svd$d)*100)[1], digits=2) #all contributions(res_svd$d/sum(res_svd$d)*100)[1:6]
+PC2_contribution    <- round((res_svd$d/sum(res_svd$d)*100)[2], digits=2)
+
+PCA_of_poolQTLp <- function(A) {
+    ggplot(PCA_of_poolQTL, aes(x=PC2, y=PC1, colour=Parent, fill=Parent))+
+    geom_point(size= 3)+ 
+    scale_x_continuous(name=paste0("PC2 (",PC2_contribution," %)")) + #, breaks=seq(-0.2,0.2,0.04)
+    scale_y_continuous(name=paste0("PC1 (",PC1_contribution," %)")) +
+    ggtitle("Principal component analysis of the \ngenomic distance between pool parents")+
+    theme(plot.title   = element_text(hjust = 0.5, vjust = 0.5, size=14, family="Arial"),
+          axis.title.y = element_text(hjust = 0.5, vjust = 0.5, size=12, family="Arial"),
+          axis.title.x = element_text(hjust = 0.5, vjust = 0,   size=12, family="Arial"),
+          axis.text.x  = element_text(angle = 0,   vjust = 0.5, size=12, family="Arial"),
+          axis.text.y  = element_text(vjust = 0,   hjust = 0.5, size=12, family="Arial"),
+          legend.title = element_text(size=12, vjust = 0.5, family="Arial"),
+          legend.text  = element_text(size=12, family="Arial"),
+          legend.position = c(1.18,.52),
+          plot.margin = margin(t = .2, r = 3, b = .2, l = .2, unit = "cm"))
+    #guides(shape = guide_legend(str_wrap(paste0("Sample pool sp (square)", " and parents contributing to pool"), 23), order=1), colour = guide_legend("V1", order=2), fill="none")
+    }
+p <- PCA_of_poolQTLp()
+ggsave(paste0("PCA_poolparents.png"), plot = p, height = 9, width=12, units = c("cm"), dpi = 320)
+p #looks good in ggsave even if it  doesn't present well here.
+
 ```
 
