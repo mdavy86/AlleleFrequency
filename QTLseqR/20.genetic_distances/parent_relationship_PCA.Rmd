@@ -151,14 +151,14 @@ BSAallsnps          <- fread(paste0(here('QTLseqR/'), "BSA0.5snps.csv"))
 BSAallsnps          <- BSAallsnps[, "ChrPos" :=  paste(str_replace_all(CHROM, "chr",""), POS, sep=".")]
 BSAallsnps          <- BSAallsnps[, "poolparent_chrpos" :=  paste(str_replace_all(parent, "_bsa",""),CHROM, POS, sep=".")]
 BSAallsnps          <- BSAallsnps[order(ChrPos),]
-BSAallsnps_ppChrPos <- BSAallsnps[,poolparent_chrpos]
+BSAallsnps_spChrPos <- BSAallsnps[,poolparent_chrpos]
 BSAallsnps_ALT      <- BSAallsnps[,r1ALT]#changed from ALT as line 53 FSTs/WTLseqR/QTLseqR_ALL_pools.Rmd uses the r for reference which is the pool.
 BSAallsnps_REF      <- BSAallsnps[,r1REF]
 
 #takes a while to run: search for each ChrPos in BSAallsnps_fromvcf and apply the alternate to the data.table.
 BSAallsnps_fromvcf_wALT   <- data.table("SAMPLE"=character(), "CHROM"=numeric(), "POS"=numeric(), "REF"=character(), "ALT0"=character(), "ALT1"=character(), "ALT2"=character(), "AD"=character(), "AD0"=numeric(), "AD1"=numeric(), "ChrPos"=numeric(), "bsaqtl_alt"=character(), "poolparent"=character(),"poolparent_chrpos"=character())
- for (cp in seq(along=BSAallsnps_ppChrPos)){
- BSAallsnps_fromvcf_wALT   <- BSAallsnps_fromvcf[poolparent_chrpos==BSAallsnps_ppChrPos[cp], `:=` ("bsaqtl_ref"= BSAallsnps_REF[cp],"bsaqtl_alt"= BSAallsnps_ALT[cp])]
+ for (cp in seq(along=BSAallsnps_spChrPos)){
+ BSAallsnps_fromvcf_wALT   <- BSAallsnps_fromvcf[poolparent_chrpos==BSAallsnps_spChrPos[cp], `:=` ("bsaqtl_ref"= BSAallsnps_REF[cp],"bsaqtl_alt"= BSAallsnps_ALT[cp])]
 }
 
 BSAallsnps_fromvcf_wALT <- BSAallsnps_fromvcf_wALT[str_length(REF)>1, REF := "-"] #replace long reference allele strings
@@ -212,7 +212,7 @@ fwrite(pred, "G10000_vcf_hits.csv", append=T)#for  all pools
 ```
 
 ## transform data to fit PCA script format this is altered to fit 2 homologues(strands) from each parent contributing to the pool. as the PCA will include one of the parents, its closest match will be found on the PCA plot and doesn't need to be calculated as a distance between the parents and pool.
-```{r transform, options(digits=10)}
+```{r transform, options(digits=10), fig.show='hold'}
 pool  <- c('P1','P2','P3','P4','P9','P10','P11','P12')
 #pool  <- "P12" #subset
 for (pooli in pool){
@@ -227,7 +227,7 @@ sites <- fread(fileP)
 ## addpool parent as a sample Pxx
 samplepoolsites  <- sites[SAMPLE==pool] #use the pool parent to select chromosome and position sites for Pxx
 samplepoolsites  <- samplepoolsites[bsaqtl_ref=="", `:=` (bsaqtl_ref=REF,bsaqtl_alt="-")] #fill missing ref sites. #bsaqtl_alt=ALT0
-samplepoolsites  <- samplepoolsites[, `:=` (SAMPLE = paste0(poolparent,"pp"), REF=bsaqtl_ref,ALT0=bsaqtl_alt)]#change sample name to pxx, and place sample pool calls to ref and alt0.
+samplepoolsites  <- samplepoolsites[, `:=` (SAMPLE = paste0(poolparent,"sp"), REF=bsaqtl_ref,ALT0=bsaqtl_alt)]#change sample name to pxx, and place sample pool calls to ref and alt0.
 sites            <- rbind(sites,samplepoolsites); rm(samplepoolsites)#attach sample pool sites to parent sites.
 px               <- unique(sites$SAMPLE) #get sample names
 
@@ -235,11 +235,11 @@ sites  <- sites[AD0=="0", `:=` (REF="-")][AD==".", `:=` (REF="-",ALT0="-",ALT1="
 
 #stack reference and alt sourced homologue columns 
 for (i in seq(along=px)){
-###REF give new column for ref and change name of REF to bases(pp) so it can match alts
+###REF give new column for ref and change name of REF to bases(sp) so it can match alts
 assign(paste0("REFsites",px[i]), sites[SAMPLE==px[i],  .(poolparent, SAMPLE,  qtl_name, REF,ChrPos,POS)][,"R0A1" :=0])
 assign(paste0("REFsites",px[i]), setnames(get(paste0("REFsites",px[i]), envir = .GlobalEnv), c("REF"), paste0("Bases",px[i])))
 
-###alts give new column for alt and change name of REF to bases(pp) so it can match ref
+###alts give new column for alt and change name of REF to bases(sp) so it can match ref
 assign(paste0("ALTsites",px[i]), sites[SAMPLE==px[i],  .(poolparent, SAMPLE,  qtl_name, ALT0,ChrPos,POS)][,"R0A1" :=1])
 assign(paste0("ALTsites",px[i]), setnames(get(paste0("ALTsites",px[i]), envir = .GlobalEnv), c("ALT0"), paste0("Bases",px[i])))
 
@@ -248,59 +248,59 @@ assign(paste0("stackedsites",px[i]), rbind.DataTable(get(paste0("REFsites",px[i]
 
 #Give new names to columns for merge
 old_names <- names(get(paste0("REFsites",px[i]), envir = .GlobalEnv))
-new_names <- c(paste0("poolparent","_",px[i]), paste0("SAMPLE","_",px[i]), paste0("qtl_name","_",px[i]), paste0("BasesP12pp","_",px[i]), paste0("ChrPos"),paste0( "POS"), paste0("R0A1"))
+new_names <- c(paste0("poolparent","_",px[i]), paste0("SAMPLE","_",px[i]), paste0("qtl_name","_",px[i]), paste0("BasesP12sp","_",px[i]), paste0("ChrPos"),paste0( "POS"), paste0("R0A1"))
                
 assign(paste0("stackedsites",px[i]), setnames(get(paste0("stackedsites",px[i]), envir = .GlobalEnv),c(old_names),c(new_names)))
 }
 
 if (pool=="P1"){
-mrgd      <- merge.data.table(stackedsitesP1pp,stackedsitesP1, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(stackedsitesP1sp,stackedsitesP1, by = c("ChrPos","R0A1"), all=F)
 mrgd      <- merge.data.table(mrgd,stackedsitesP10, by = c("ChrPos","R0A1"), all=F)
 mrgd      <- merge.data.table(mrgd,stackedsitesP12, by = c("ChrPos","R0A1"), all=F)
 }
 if (pool=="P2"){
-mrgd      <- merge.data.table(stackedsitesP2pp,stackedsitesP2, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(stackedsitesP2sp,stackedsitesP2, by = c("ChrPos","R0A1"), all=F)
 mrgd      <- merge.data.table(mrgd,stackedsitesP9, by = c("ChrPos","R0A1"), all=F)
 mrgd      <- merge.data.table(mrgd,stackedsitesP12, by = c("ChrPos","R0A1"), all=F)
 }
 if (pool=="P3"){
-mrgd      <- merge.data.table(stackedsitesP3pp,stackedsitesP3, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(stackedsitesP3sp,stackedsitesP3, by = c("ChrPos","R0A1"), all=F)
 mrgd      <- merge.data.table(mrgd,stackedsitesP11, by = c("ChrPos","R0A1"), all=F)
 mrgd      <- merge.data.table(mrgd,stackedsitesP13, by = c("ChrPos","R0A1"), all=F)
 }
 if (pool=="P4"){
-mrgd      <- merge.data.table(stackedsitesP4pp,stackedsitesP4, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(stackedsitesP4sp,stackedsitesP4, by = c("ChrPos","R0A1"), all=F)
 mrgd      <- merge.data.table(mrgd,stackedsitesP9, by = c("ChrPos","R0A1"), all=F)
 mrgd      <- merge.data.table(mrgd,stackedsitesP11, by = c("ChrPos","R0A1"), all=F)
 }
 if (pool=="P9"){
-mrgd      <- merge.data.table(stackedsitesP9pp,stackedsitesP9, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(stackedsitesP9sp,stackedsitesP9, by = c("ChrPos","R0A1"), all=F)
 mrgd      <- merge.data.table(mrgd,stackedsitesP2, by = c("ChrPos","R0A1"), all=F)
 mrgd      <- merge.data.table(mrgd,stackedsitesP4, by = c("ChrPos","R0A1"), all=F)
 }
 if (pool=="P10"){
-mrgd      <- merge.data.table(stackedsitesP10pp,stackedsitesP10, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(stackedsitesP10sp,stackedsitesP10, by = c("ChrPos","R0A1"), all=F)
 mrgd      <- merge.data.table(mrgd,stackedsitesP8, by = c("ChrPos","R0A1"), all=F)
 mrgd      <- merge.data.table(mrgd,stackedsitesP1, by = c("ChrPos","R0A1"), all=F)
 }
 if (pool=="P11"){
-mrgd      <- merge.data.table(stackedsitesP11pp,stackedsitesP11, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(stackedsitesP11sp,stackedsitesP11, by = c("ChrPos","R0A1"), all=F)
 mrgd      <- merge.data.table(mrgd,stackedsitesP3, by = c("ChrPos","R0A1"), all=F)
 mrgd      <- merge.data.table(mrgd,stackedsitesP4, by = c("ChrPos","R0A1"), all=F)
 }
 if (pool=="P12"){
-mrgd      <- merge.data.table(stackedsitesP12pp,stackedsitesP1, by = c("ChrPos","R0A1"), all=F)
+mrgd      <- merge.data.table(stackedsitesP12sp,stackedsitesP1, by = c("ChrPos","R0A1"), all=F)
 mrgd      <- merge.data.table(mrgd,stackedsitesP2, by = c("ChrPos","R0A1"), all=F)
 mrgd      <- merge.data.table(mrgd,stackedsitesP12, by = c("ChrPos","R0A1"), all=F)
 }
 
-#attach the SAMP_ppqtlname_R0A1 name to sequence title instead of e.g bases.x use multiples of inserted for each data.table merged for the subset_title and mrgdt.
+#attach the SAMP_spqtlname_R0A1 name to sequence title instead of e.g bases.x use multiples of inserted for each data.table merged for the subset_title and mrgdt.
 #transpose to wide for each qtl_name over all merged parent columns
 #may need to adjust 5 to a qtl_names column if the next pool doesn't fit the a qtl column into 5.
 
 qtl_names       <- unlist(na.omit(unique(mrgd[,c(5)])))
 mrgd_names      <- names(mrgd)[5]
-#mrgd_names      <- "qtl_name_P12pp"
+#mrgd_names      <- "qtl_name_P12sp"
 
 for (i in qtl_names){
   assign(i, mrgd[get(mrgd_names)==i]) #subset for each qtl.
@@ -427,78 +427,37 @@ PCA_of_poolQTL  <- PCA_of_poolQTL[, c("s1", "s2","s3","s4","s5") := tstrsplit(V1
 PCA_of_poolQTL  <- setnames(PCA_of_poolQTL, names(PCA_of_poolQTL), c("V1","PC1" ,"PC2", "V4", "V5", "QTL_name", "s1", "s2", "s3", "s4", "Parent_sample"))
 #change factors for shape plot order
 unique(PCA_of_poolQTL$Parent_sample)
-if(pool=="P1"){PCA_of_poolQTL  <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P1pp", "P1", "P10", "P12"))]}
-if(pool=="P2"){PCA_of_poolQTL  <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P2pp", "P2", "P9", "P12"))]}
-if(pool=="P3"){PCA_of_poolQTL  <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P3pp", "P3", "P11", "P13"))]}
-if(pool=="P4"){PCA_of_poolQTL  <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P4pp", "P4", "P9", "P11"))]}
-if(pool=="P9"){PCA_of_poolQTL  <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P9pp", "P9", "P2", "P4"))]}
-if(pool=="P10"){PCA_of_poolQTL <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P10pp", "P10", "P1", "P8"))]}
-if(pool=="P11"){PCA_of_poolQTL <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P11pp", "P11", "P3", "P4"))]}
-if(pool=="P12"){PCA_of_poolQTL <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P12pp", "P12", "P1", "P2"))]}
-#example to remove df$var2 <- factor(df$var2, levels=c("P1pp", "P1", "P10", "P12"))
+if(pool=="P1"){PCA_of_poolQTL  <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P1sp", "P1", "P10", "P12"))]}
+if(pool=="P2"){PCA_of_poolQTL  <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P2sp", "P2", "P9", "P12"))]}
+if(pool=="P3"){PCA_of_poolQTL  <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P3sp", "P3", "P11", "P13"))]}
+if(pool=="P4"){PCA_of_poolQTL  <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P4sp", "P4", "P9", "P11"))]}
+if(pool=="P9"){PCA_of_poolQTL  <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P9sp", "P9", "P2", "P4"))]}
+if(pool=="P10"){PCA_of_poolQTL <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P10sp", "P10", "P1", "P8"))]}
+if(pool=="P11"){PCA_of_poolQTL <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P11sp", "P11", "P3", "P4"))]}
+if(pool=="P12"){PCA_of_poolQTL <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P12sp", "P12", "P1", "P2"))]}
+#example to remove df$var2 <- factor(df$var2, levels=c("P1sp", "P1", "P10", "P12"))
 
 pool            <- names(fread("tmp_pool"))
+PC1_contribution    <- round((res_svd$d/sum(res_svd$d)*100)[1], digits=2) #all contributions(res_svd$d/sum(res_svd$d)*100)[1:6]
+PC2_contribution    <- round((res_svd$d/sum(res_svd$d)*100)[2], digits=2)
 
 PCA_of_poolQTLp <- function(A) {
-    ggplot(PCA_of_poolQTL, aes(x=PC2, y=PC1, colour=QTL_name, shape=Parent_sample))+#fill=s5
-    geom_point(size= 4)+  # shape = 21, alpha = 3/10, 
-    scale_shape_manual(values=c(16,1,3,4)) +    
-    #ggtitle(paste0(pool,"sPC_sample_QTLs")) +
-    theme_classic()+
-    theme(plot.title   = element_text(hjust = 0.5, vjust = 0.5, size=14),
-          axis.title.y = element_text(hjust = 0.5, vjust = 0.5, size=12),
-          axis.title.x = element_text(hjust = 0.5, vjust = 0,   size=12),
-          axis.text.x  = element_text(angle = 0,   vjust = 0.5, size=12),
-          axis.text.y  = element_text(vjust = 0,   hjust = 0.5, size=12))+
-    guides(shape = guide_legend(str_wrap(paste0("Sample pool ",pool, "pp (colour filled)", " and parents contributing to pool (no fill)"), 23), order=1), color = guide_legend("QTL name", order=2))
+    ggplot(PCA_of_poolQTL, aes(x=PC2, y=PC1, colour=QTL_name, shape=Parent_sample, fill=QTL_name))+
+    geom_point(size= 2, alpha = 7/10)+
+    scale_shape_manual(values=c(8,23,21,24)) +
+    scale_x_continuous(name=paste0("PC2 (",PC2_contribution," %)"), breaks=seq(-0.2,0.2,0.04)) +
+    scale_y_continuous(name=paste0("PC1 (",PC1_contribution," %)"), breaks=seq(-0.2,0.2,0.04)) +
+    theme(plot.title   = element_text(hjust = 0.5, vjust = 0.5, size=12),
+          axis.title.y = element_text(hjust = 0.5, vjust = 0.5, size=8),
+          axis.title.x = element_text(hjust = 0.5, vjust = 0,   size=8),
+          axis.text.x  = element_text(angle = 0,   vjust = 0.5, size=8),
+          axis.text.y  = element_text(vjust = 0,   hjust = 0.5, size=8),
+          legend.title = element_text(size=9),
+          legend.text  = element_text(size=8))+
+    guides(shape = guide_legend(str_wrap(paste0("Sample pool ",pool, "sp (star)", " and parents contributing to pool"), 23), order=1), colour = guide_legend("QTL name", order=2), fill="none")
     }
 p <- PCA_of_poolQTLp()
-ggsave(paste0("PCA_poolparents_vs_pool_",pool,".png"), plot = p)
+ggsave(paste0("PCA_poolparents_vs_pool_",pool,".png"), plot = p, height = 12, width=15, units = c("cm"), dpi = 320)
 p
 }
-```
-
-#### output to png images generated by Tomokazu Konishi
-```{r}
-# sample
-	png(width=2100, height=2300, pointsize = 80, file="sPC_sample_12.png")
-	  par(lwd=4, mex=0.6, mai=c(4,4,3,0.2))
-  	  plot( sPC_sample [,1], sPC_sample[,2], col="gray50" ,  pch=1, main="sample", xlab="", ylab="" , axes=T)
-	dev.off()
-
-# sites
-	png(width=2100, height=2300, pointsize = 80, file="sPC_seq_1.png")
-	  par(lwd=4, mex=0.6, mai=c(4,4,3,0.2))
-
- 	 colors <- c(rgb(red=10, green=100, blue=255, alpha=255, maxColorValue =255), rgb(red=140, green=255, blue=100, alpha=255, maxColorValue =255),
-	    rgb(red=255, green=50, blue=10, alpha=255, maxColorValue =255), rgb(red=100, green=100, blue=100, alpha=255, maxColorValue =255))
-# color of presentation: I hope this set is recognizable for colorblind persons. 
-
-	 plot(1:n_seq, sPC_nuc[1:n_seq,1],  pch="", xlab="sites", ylab="sPC1", main="sites")
-	    text(1:n_seq, sPC_nuc[1:n_seq,1],  labels=1:n_seq  , cex=0.8, col= colors[1] )
-	    text(1:n_seq, sPC_nuc[1:n_seq+n_seq,1],  labels=1:n_seq  , cex=0.8, col=colors[2] )
-	    text(1:n_seq, sPC_nuc[1:n_seq+n_seq+n_seq,1],  labels=1:n_seq  , cex=0.8, col= colors[3] )
-	    text(1:n_seq, sPC_nuc[1:n_seq+n_seq+n_seq+n_seq,1], labels=1:n_seq  , cex=0.8, col= colors[4] )
-
-	legend(x=10, y=0, legend=c(  "A","T", "G", "C"),  pch="1",  text.col=colors,   col=colors,  border = "white", box.lwd = 1, box.lty = 1, cex=0.8, bg="white")
-	dev.off()
-
-# contribution
-	png(width=2100, height=2300, pointsize = 80, file="contributions.png")
-	  par(lwd=4, mex=0.6, mai=c(4,4,3,0.2))
-	  plot(1:20, (res_svd$d/sum(res_svd$d)*100)[1:20], pch=1, type="b",  lty=3, ylab="(%)", xlab="PC", main="Contribution", col="gray50")
-	dev.off()
-
-# contribution tangent regression 
-
-	theta  <- ((length(res_svd$d)+1):1-1)/(length(res_svd$d)+1)*(0.5*pi)
-	tans <- tan(theta)
-
-	png(width=2100, height=2300, pointsize = 80, file="tangent.png")
-	  par(lwd=4, mex=0.6, mai=c(4,4,3,0.2))
-	 plot((tans), c( res_svd$d, 0)/sum(res_svd$d)*100, xlab="Tangent", ylab="Contribution (%)")
-		#abline(0, sum(res_svd$d)/sum(tans)/sum(res_svd$d)*100, lty=3)
-	     z <- line ((res_svd$d/sum(res_svd$d)*100 )[1:10] ~ (tans )[1:10]  )
-		abline(coef(z), lty=3)
-	dev.off()
 ```
