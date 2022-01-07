@@ -363,19 +363,17 @@ PCA_of_poolQTL  <- fread("sPC_sample_QTLs.txt")
 PCA_of_poolQTL  <- PCA_of_poolQTL[, c("s1") := tstrsplit(V1, "_", fixed=TRUE)]
 PCA_of_poolQTL  <- setnames(PCA_of_poolQTL, names(PCA_of_poolQTL), c("Parent","PC1" ,"PC2", "V4", "V5", "V6", "s1", "s2", "s3", "s4", "Parent_sample"))
 #change factors for shape plot order
-PCA_of_poolQTL  <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P1", "P2", "P3", "P4", "P8", "P9", "P10", "P11", "P12", "P13"))]
-
-#example to remove df$var2 <- factor(df$var2, levels=c("P1sp", "P1", "P10", "P12"))
-
+PCA_of_poolQTL  <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P1", "P2", "P3", "P4", "P8", "P9", "P10", "P11", "P12"))]
 
 PC1_contribution    <- round((res_svd$d/sum(res_svd$d)*100)[1], digits=2) #all contributions(res_svd$d/sum(res_svd$d)*100)[1:6]
 PC2_contribution    <- round((res_svd$d/sum(res_svd$d)*100)[2], digits=2)
 
 PCA_of_poolQTLp <- function(A) {
-    ggplot(PCA_of_poolQTL, aes(x=PC2, y=PC1, colour=Parent, fill=Parent))+
+    ggplot(PCA_of_poolQTL, aes(x=PC2, y=PC1, colour=Parent_sample, fill=Parent_sample))+
     geom_point(size= 3)+ 
     scale_x_continuous(name=paste0("PC2 (",PC2_contribution," %)")) + #, breaks=seq(-0.2,0.2,0.04)
     scale_y_continuous(name=paste0("PC1 (",PC1_contribution," %)")) +
+    scale_colour_viridis_d() +
     ggtitle("Principal component analysis of the \ngenomic distance between pool parents")+
     theme(plot.title   = element_text(hjust = 0.5, vjust = 0.5, size=14, family="Arial"),
           axis.title.y = element_text(hjust = 0.5, vjust = 0.5, size=12, family="Arial"),
@@ -385,12 +383,12 @@ PCA_of_poolQTLp <- function(A) {
           legend.title = element_text(size=12, vjust = 0.5, family="Arial"),
           legend.text  = element_text(size=12, family="Arial"),
           legend.position = c(1.18,.52),
-          plot.margin = margin(t = .2, r = 3, b = .2, l = .2, unit = "cm"))
-    #guides(shape = guide_legend(str_wrap(paste0("Sample pool sp (square)", " and parents contributing to pool"), 23), order=1), colour = guide_legend("V1", order=2), fill="none")
+          plot.margin = margin(t = .2, r = 3, b = .2, l = .2, unit = "cm"))+
+    guides(colour = guide_legend("Parent"), fill="none")
     }
 p <- PCA_of_poolQTLp()
 ggsave(paste0("PCA_poolparents.png"), plot = p, height = 9, width=12, units = c("cm"), dpi = 320)
-p #looks good in ggsave even if it  doesn't present well here.
+#p #looks good in ggsave even if it  doesn't present well here.
 
 ```
 

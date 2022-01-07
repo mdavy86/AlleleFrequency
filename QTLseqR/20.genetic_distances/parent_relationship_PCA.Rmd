@@ -435,29 +435,34 @@ if(pool=="P9"){PCA_of_poolQTL  <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of
 if(pool=="P10"){PCA_of_poolQTL <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P10sp", "P10", "P1", "P8"))]}
 if(pool=="P11"){PCA_of_poolQTL <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P11sp", "P11", "P3", "P4"))]}
 if(pool=="P12"){PCA_of_poolQTL <- PCA_of_poolQTL[, Parent_sample :=factor(PCA_of_poolQTL$Parent_sample, levels=c("P12sp", "P12", "P1", "P2"))]}
-#example to remove df$var2 <- factor(df$var2, levels=c("P1sp", "P1", "P10", "P12"))
+
+QTL_name_levels  <- PCA_of_poolQTL[, chr_n := str_replace_all(s2, "chr", "")][, chr_n := as.numeric(chr_n)][order(chr_n)]
+QTL_name_levels  <- factor(QTL_name_levels[,QTL_name], levels = unique(QTL_name_levels$QTL_name))
 
 pool            <- names(fread("tmp_pool"))
 PC1_contribution    <- round((res_svd$d/sum(res_svd$d)*100)[1], digits=2) #all contributions(res_svd$d/sum(res_svd$d)*100)[1:6]
 PC2_contribution    <- round((res_svd$d/sum(res_svd$d)*100)[2], digits=2)
 
 PCA_of_poolQTLp <- function(A) {
-    ggplot(PCA_of_poolQTL, aes(x=PC2, y=PC1, colour=QTL_name, shape=Parent_sample, fill=QTL_name))+
-    geom_point(size= 2, alpha = 7/10)+
-    scale_shape_manual(values=c(8,23,21,24)) +
+    ggplot(PCA_of_poolQTL, aes(x=PC2, y=PC1, colour=QTL_name_levels, shape=Parent_sample, fill=QTL_name_levels))+
+    geom_point(size= 3, alpha = 7/10)+
+    scale_shape_manual(values=c(8,15,16,17)) +
+    scale_colour_viridis_d() +
     scale_x_continuous(name=paste0("PC2 (",PC2_contribution," %)"), breaks=seq(-0.2,0.2,0.04)) +
     scale_y_continuous(name=paste0("PC1 (",PC1_contribution," %)"), breaks=seq(-0.2,0.2,0.04)) +
-    theme(plot.title   = element_text(hjust = 0.5, vjust = 0.5, size=12),
-          axis.title.y = element_text(hjust = 0.5, vjust = 0.5, size=8),
-          axis.title.x = element_text(hjust = 0.5, vjust = 0,   size=8),
-          axis.text.x  = element_text(angle = 0,   vjust = 0.5, size=8),
-          axis.text.y  = element_text(vjust = 0,   hjust = 0.5, size=8),
-          legend.title = element_text(size=9),
-          legend.text  = element_text(size=8))+
+    theme(plot.title   = element_text(hjust = 0.5, vjust = 0.5, size=12, family="Arial"),
+          axis.title.y = element_text(hjust = 0.5, vjust = 0.5, size=8, family="Arial"),
+          axis.title.x = element_text(hjust = 0.5, vjust = 0,   size=8, family="Arial"),
+          axis.text.x  = element_text(angle = 0,   vjust = 0.5, size=8, family="Arial"),
+          axis.text.y  = element_text(vjust = 0,   hjust = 0.5, size=8, family="Arial"),
+          legend.title = element_text(size=9, family="Arial"),
+          legend.text  = element_text(size=8, family="Arial"))+
+    ggtitle(str_wrap(paste0("Genomic distance among 10 Kb regions under QTL peaks in pool ",pool ), 50))+
     guides(shape = guide_legend(str_wrap(paste0("Sample pool ",pool, "sp (star)", " and parents contributing to pool"), 23), order=1), colour = guide_legend("QTL name", order=2), fill="none")
     }
 p <- PCA_of_poolQTLp()
-ggsave(paste0("PCA_poolparents_vs_pool_",pool,".png"), plot = p, height = 12, width=15, units = c("cm"), dpi = 320)
-p
+ggsave(paste0("PCA_poolparents_vs_pool_",pool,".png"), plot = p, height = 11, width=16, units = c("cm"), dpi = 320)
+#p
 }
+##genomic distance among 10 Kb regions under QTL peaks in pool Px 
 ```
