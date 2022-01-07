@@ -374,7 +374,8 @@ fwrite(sPC_sample, file=paste0(pool,"sPC_sample_QTLs.txt"), sep="\t", append=T,c
 
 #```{r plot qtl for pool, eval=TRUE}
 #attach phenotype
-#PCA_of_poolQTL  <- fread("P11sPC_sample_QTLs.txt")
+#pool                <- names(fread("tmp_pool"))
+
 PCA_of_poolQTL  <- fread(paste0(pool,"sPC_sample_QTLs.txt"))
 
 Phenotype <- fread("Rualn_bams_phe.txt", select = c("PedigreeItem3","PSA_1tol_5sus")); setkey(Phenotype,PedigreeItem3)
@@ -383,27 +384,21 @@ PCA_of_poolQTL  <- PCA_of_poolQTL[, c("PedigreeItem", "s2","s3","s4") := tstrspl
 PCA_of_poolQTL  <- PCA_of_poolQTL[, PedigreeItem := str_replace_all(PCA_of_poolQTL$PedigreeItem,c(".x"="poolsample",".y"=""))]
 setnames(PCA_of_poolQTL, names(PCA_of_poolQTL), str_replace_all(names(PCA_of_poolQTL),c(V32="QTL_name"))) #,V2="PC1",V3="PC2"
 setkey(PCA_of_poolQTL,PedigreeItem)
-
 PCA_of_poolQTL  <- Phenotype[PCA_of_poolQTL] #merge phenotypes 
 #alter phenotype names
-
 PCA_of_poolQTL  <- PCA_of_poolQTL[, PSA_1tol_5sus := as.character(PCA_of_poolQTL$PSA_1tol_5sus)]
-samplepoolname  <- paste0("Sample_pool (",pool,")")
-
+samplepoolname  <- paste0("Sample pool (",pool,")")
 PCA_of_poolQTL  <- PCA_of_poolQTL[is.na(PSA_1tol_5sus), PSA_1tol_5sus := glue(samplepoolname)] # paste0("Sample pool (",pool,")")
-#PCA_of_poolQTL  <- PCA_of_poolQTL[, PSA_1tol_5sus := str_replace_all(PCA_of_poolQTL$PSA_1tol_5sus, "0", paste0("Sample pool (",pool,")"))] #
 PCA_of_poolQTL  <- PCA_of_poolQTL[, PSA_1tol_5sus := str_replace_all(PCA_of_poolQTL$PSA_1tol_5sus, c( "^1"="Tolerant plant", "^2"="Tolerant plant", "^3"="Susceptible plant", "^4"="Susceptible plant", "^5"="Susceptible plant"))] 
 PCA_of_poolQTL  <- PCA_of_poolQTL[, chr_n := str_replace_all(s3, "chr", "")][, chr_n := as.numeric(chr_n)][order(chr_n)]
 QTL_name_levels  <- factor(PCA_of_poolQTL[,QTL_name], levels = unique(PCA_of_poolQTL$QTL_name))
-
-pool                <- names(fread("tmp_pool"))
 
 PC1_contribution    <- round((res_svd$d/sum(res_svd$d)*100)[1], digits=2) #all contributions(res_svd$d/sum(res_svd$d)*100)[1:6]
 PC2_contribution    <- round((res_svd$d/sum(res_svd$d)*100)[2], digits=2)
 
 PCA_of_poolQTLp <- function(A) {
     ggplot(PCA_of_poolQTL, aes(x=V3, y=V2, colour=QTL_name_levels, fill=QTL_name_levels,shape=as.factor(PSA_1tol_5sus)))+ #,shape=PSA_1tol_5sus
-    geom_point(size= 2, alpha = 7/10)+
+    geom_point(size= 3, alpha = 7/10)+
     scale_shape_manual(values=c(8,16,17)) +
     scale_colour_viridis_d() +
     scale_x_continuous(name=paste0("PC2 (",PC2_contribution," %)")) + #
@@ -415,10 +410,14 @@ PCA_of_poolQTLp <- function(A) {
           axis.text.y  = element_text(vjust = 0,   hjust = 0.5, size=8, family="Arial"),
           legend.title = element_text(size=9, family="Arial"),
           legend.text  = element_text(size=8, family="Arial"))+
-    guides(shape = guide_legend(str_wrap(paste0("PSA phenotype of parental individuals with the sample pool QTL were derived from"), 23), order=1), colour = guide_legend("QTL name", order=2), fill="none")
-    }
+    guides(shape = guide_legend(str_wrap(paste0("PSA phenotype of parental individuals with the sample pool QTL were derived from"), 23), order=1), colour = guide_legend("QTL name", order=2), fill="none")+
+      ggtitle(as.expression(bquote(atop("The contribution of alleles from pool" ~ .(pool) ~ "to PSA phenotype", "in parental" ~ italic("A. chinensis") ~ "var." ~ italic("chinensis") ~ "individuals"))))
+}
+#, italic("A. chinensis"), " var. ", italic("chinensis"), "individuals")
+#as.expression(bquote(R^2 == .(rsq)
+#as.expression(bquote(R^2~"="~.(rsq))))
 p <- PCA_of_poolQTLp()
-ggsave(paste0("PCA_poolparents_vs_pool_",pool,".png"), plot = p, height = 12, width=15, units = c("cm"), dpi = 320)
+ggsave(paste0("PCA_poolparents_vs_pool_",pool,".png"), plot = p, height = 11, width=16, units = c("cm"), dpi = 320)
 #p
 }
 ```
