@@ -180,7 +180,7 @@ pred <-fread(paste0("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/21.psaQTLc
 #rename samples to match the pool parent
 pred <- pred[, SAMPLE := str_replace_all(SAMPLE, c("ER10522_" = "", "SRA_" = "", "ER10400_" = "","ER10508_"=""))]#clean pedigreeID
 
-pred <- pred[, SAMPLE := str_replace_all(SAMPLE, c("CK02_01"="P1",	"CK19_03"="P2",	"CK23_08"="P3",	"CK51_09"="P4",	"CK09_11"="P5",	"CK17_03"="P6",	"CK18_01"="P7",	"Russell"="P8", "CK10_02"="P9",	"CK20_01"="P10",	"CK22_03"="P11",	"CK51_01"="P12",	"CK01_01_01_01"="P13",	"CK02_04"="P14",	"CK06_01"="P15",	"CK10_05"="P16",	"CK13_02"="P17",	"CK15_03"="P18",	"CK15_04"="P19",	"CK16_01"="P20",	"CK17_02"="P21",	"CK26_01"="P22", "CK22_04"="GP1", "CK51_06"="GP2", "CK51_11"="GP3", "Gold3"="GP4", "Gold9"="GP5", "Hort16A"="GP6",  "Hort22d"="GP7", "Jinfeng"="GP8", "Kuimi"="GP9", "M33"="GP10",  "Red19"="GP11", "T94.30-03-10f"="GP12",  "T94.30-04-08b"="GP13", "T94.30-04-08c"="GP14"))]
+pred <- pred[, SAMPLE := str_replace_all(SAMPLE, c("CK02_01"="P1",	"CK19_03"="P2",	"CK23_08"="P3",	"CK51_09"="P4",	"CK09_11"="P5",	"CK17_03"="P6",	"CK18_01"="P7",	"Russell"="P8", "CK10_02"="P9",	"CK20_01"="P10",	"CK22_03"="P11",	"CK51_01"="P12",	"CK01_01_01_01"="P13",	"CK02_04"="P14",	"CK06_01"="P15",	"CK10_05"="P16",	"CK13_02"="P17",	"CK15_03"="P18",	"CK15_04"="P19",	"CK16_01"="P20",	"CK17_02"="P21",	"CK26_01"="P22", "CK22_04"="GP1", "CK51_06"="GP2", "CK51_11"="GP3", "Gold3"="GP4", "Gold9"="GP5", "Hort16A"="GP6",  "Hort22d"="GP7", "Jinfeng"="GP8", "Kuimi"="GP9", "M33"="GP10",  "Red19"="GP11", "T94.30-03-10f"="GP12",  "T94.30-04-08b"="GP13", "T94.30-04-08c"="GP14", "T94.30-04-08d"="GP15"))]
 
  fwrite(pred, paste0(i, "G10000_vcf_hits.csv"))#for next chunk individual pools
  fwrite(pred, "G10000_vcf_hits.csv", append=T)#for  all pools
@@ -188,32 +188,31 @@ pred <- pred[, SAMPLE := str_replace_all(SAMPLE, c("CK02_01"="P1",	"CK19_03"="P2
 ```
 
 ## transform data to fit PCA script format this is altered to fit 2 homologues(strands) from each parent contributing to the pool. as the PCA will include one of the parents, its closest match will be found on the PCA plot and doesn't need to be calculated as a distance between the parents and pool.
-## Run all in a big loop with analysis and plotting for each pool
+## Run all in a big loop with analysis and plotting for each qtl
 
 ```{r transform and write figures, fig.show='hold'}
 pool  <- c('P1','P2','P3','P4','P9','P10','P11','P12')
-#pool  <- c('P11') #subset
+pool  <- c('P3') #subset
 for (pooli in pool){
 pool <- pooli
 
-write(pool, file="tmp_pool") #to be used in the next plotting chunk based on this one.
-
 fileP <- paste0("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/21.psaQTLcheck/",pool,"G10000_vcf_hits.csv")
+
 allsites <- fread(fileP)
-allsites <- allsites[,"ChrPos" := paste(CHROMn,POS,sep=".")] #an issue with fread requires these to be re-writen.
+allsites <- allsites[,"ChrPos" := paste(CHROMn,POS,sep=".")] #an issue with fread requires these to be re-written.
 
 ## addpool parent as a sample Pxx
 samplepoolsites  <- allsites[SAMPLE==pool] #use the pool parent to select chromosome and position allsites for Pxx
 samplepoolsites  <- samplepoolsites[bsaqtl_ref=="", `:=` (bsaqtl_ref=REF,bsaqtl_alt="-")] #fill missing ref allsites. #bsaqtl_alt=ALT0
 samplepoolsites  <- samplepoolsites[, `:=` (SAMPLE = paste0(poolparent,"sp"), REF=bsaqtl_ref,ALT0=bsaqtl_alt)]#change sample name to pxx, and place sample pool calls to ref and alt0.
-allsites            <- rbind(allsites,samplepoolsites); rm(samplepoolsites)#attach sample pool sites to parent sites.
+allsites         <- rbind(allsites,samplepoolsites); rm(samplepoolsites)#attach sample pool sites to parent sites.
 px               <- unique(allsites$SAMPLE) #get sample names
 
 allsites  <- allsites[AD0=="0", `:=` (REF="-")][AD==".", `:=` (REF="-",ALT0="-",ALT1="-")][REF=="", `:=` (REF="-")][ALT0==".", `:=` (ALT0="-")][ALT1==".", `:=` (ALT1="-")][str_length(REF)>1, `:=` (REF="-")][str_length(ALT0)>1, `:=` (ALT0="-")][str_length(ALT1)>1, `:=` (ALT1="-")][bsaqtl_ref=="", bsaqtl_ref := "-"][bsaqtl_alt=="", bsaqtl_alt := "-"]
 
 ###stack reference and alt sourced homologue columns
 for (i in seq(along=px)){
-###REF give new column for ref and change name of REF to bases(sp) so it can match alts
+##REF give new column for ref and change name of REF to bases(sp) so it can match alts
 assign(paste0("REFsites",px[i]), allsites[SAMPLE==px[i],  .(poolparent, SAMPLE,  qtl_name, REF,ChrPos)][,"R0A1" :=0])
 assign(paste0("REFsites",px[i]), setnames(get(paste0("REFsites",px[i]), envir = .GlobalEnv), c("REF"), paste0("Bases",px[i])))
 
@@ -248,6 +247,10 @@ assign(paste0("stack",pool), merge.data.table(get(paste0("stackedsites",pool), e
 for (PItem in PedigreeItems_v){
 assign(paste0("stack",pool), merge.data.table(get(paste0("stack",pool), envir = .GlobalEnv),get(PItem, envir = .GlobalEnv), by = c("ChrPos","R0A1"), all=F))
 }
+#remove this test
+tt <- stackP3[,.(Bases_P3ppP3.x, Bases_P3ppP3.y)]
+tt<- data.table(names(stackP3))
+###remove this test above
 
 #attach the SAMP_spqtlname_R0A1 name to sequence title instead of e.g bases.x use multiples of inserted for each data.table merged for the subset_title and mrgdt.
 #transpose to wide for each qtl_name over all merged parent columns
@@ -255,19 +258,19 @@ assign(paste0("stack",pool), merge.data.table(get(paste0("stack",pool), envir = 
 qtl_names       <- unlist(na.omit(unique(get(paste0("stack",pool), envir = .GlobalEnv)[,c(5)])), use.names = F)
 mrgd_names      <- names(get(paste0("stack",pool), envir = .GlobalEnv))[5]
 
-for (i in qtl_names){
-  assign(i, get(paste0("stack",pool), envir = .GlobalEnv)[get(mrgd_names)==i]) #subset for each QTL
-  subset_title   <- as.character(get(i)[1, c(5,9,13,17,21,25,29,33,37,41, 45,49,53,57,61,65,69,73,77,81,85,89, 93,97,101,105,109,113,117,121, 125)]) # get names of each QTL, attach sample name for bases column
+for (iq in qtl_names){
+  assign(iq, get(paste0("stack",pool), envir = .GlobalEnv)[get(mrgd_names)==iq]) #subset for each QTL
+  subset_title   <- as.character(get(iq)[1, c(5,9,13,17,21,25,29,33,37,41, 45,49,53,57,61,65,69,73,77,81,85,89, 93,97,101,105,109,113,117,121, 125)]) # get names of each QTL, attach sample name for bases column
 
-  subset_Bases         <- str_subset(names(get(i)), "Bases*")                                      # get old column names
-  nameswith_sp         <- str_replace_all(str_subset(names(get(i)), "qtl_name*"), "qtl_name_","")  # get the sample name from bases
+  subset_Bases         <- str_subset(names(get(iq)), "Bases*")                                      # get old column names
+  nameswith_sp         <- str_replace_all(str_subset(names(get(iq)), "qtl_name*"), "qtl_name_","")  # get the sample name from bases
   subset_title_qtlname <- str_c(nameswith_sp,subset_title, sep="_")  # new row names with qtl_name and correct sample and sample pool name sp..
-  assign(i, setnames(get(i), subset_Bases, subset_title_qtlname))    #setnames qtl_names to bases column
-  assign(i, t(get(i)[, subset_title_qtlname, with = FALSE]))         #transpose and subset
-  irownames<- as.data.table(rownames(get(i)),get(i))                 #get the rownames and paste as a column
-  assign(i, cbind(irownames, apply(get(i), 1, paste, collapse="")))
-  assign(i, get(i)[-2,])
-  write.table(get(i),file=paste0("wide",i,".tsv"),append = FALSE,col.names=F,row.names=F, sep="\t")
+  assign(iq, setnames(get(iq), subset_Bases, subset_title_qtlname))    #setnames qtl_names to bases column
+  assign(iq, t(get(iq)[, subset_title_qtlname, with = FALSE]))         #transpose and subset
+  irownames<- as.data.table(rownames(get(iq)),get(iq))                 #get the rownames and paste as a column
+  assign(iq, cbind(irownames, apply(get(iq), 1, paste, collapse="")))
+  assign(iq, get(iq)[-2,])
+  write.table(get(iq),file=paste0("wide",iq,".tsv"),append = FALSE,col.names=F,row.names=F, sep="\t")
   }
 #}
 #```
@@ -365,17 +368,26 @@ tapply(sites[,2], sites[,1], nchar)
 #### append to another file for each qtl analysed.
 sPC_sample <- data.table(row.names(sPC_sample), sPC_sample)
 sPC_sample <- sPC_sample[, "qtl" := ii]
-fwrite(sPC_sample, file=paste0(pool,"sPC_sample_QTLs.txt"), sep="\t", append=T,col.names=F)
-}
+fwrite(sPC_sample, file=paste0(pool,"sPC_sample_QTLs.txt"), sep="\t", append=F,col.names=F)
+#fwrite(sPC_sample, file=paste0(pool,"sPC_sample_QTLs.txt"), sep="\t", append=T,col.names=F)
+#}
 #}
 #```
 
 ## plot all qtl for each pool
 
 #```{r plot qtl for pool, eval=TRUE}
-#attach phenotype
-#pool                <- names(fread("tmp_pool"))
+#get parents of bulk
+pfileP <- paste0("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/20.genetic_distances/",pool,"G10000_vcf_hits.csv")
+psites <- fread(pfileP)
+psamplepoolsites  <- psites[SAMPLE==pool] #use the pool parent to select chromosome and position sites for Pxx
+psamplepoolsites  <- psamplepoolsites[bsaqtl_ref=="", `:=` (bsaqtl_ref=REF,bsaqtl_alt="-")] #fill missing ref sites. #bsaqtl_alt=ALT0
+psamplepoolsites  <- psamplepoolsites[, `:=` (SAMPLE = paste0(poolparent,"sp"), REF=bsaqtl_ref,ALT0=bsaqtl_alt)]
+psites            <- rbind(psites,psamplepoolsites); rm(psamplepoolsites)#attach sample pool sites to parent sites.
+parentsofbulk     <- unique(psites$SAMPLE) #get sample names
 
+
+#attach phenotype
 PCA_of_poolQTL  <- fread(paste0(pool,"sPC_sample_QTLs.txt"))
 
 Phenotype <- fread("Rualn_bams_phe.txt", select = c("PedigreeItem3","PSA_1tol_5sus")); setkey(Phenotype,PedigreeItem3)
@@ -387,37 +399,71 @@ setkey(PCA_of_poolQTL,PedigreeItem)
 PCA_of_poolQTL  <- Phenotype[PCA_of_poolQTL] #merge phenotypes 
 #alter phenotype names
 PCA_of_poolQTL  <- PCA_of_poolQTL[, PSA_1tol_5sus := as.character(PCA_of_poolQTL$PSA_1tol_5sus)]
-samplepoolname  <- paste0("Sample pool (",pool,")")
-PCA_of_poolQTL  <- PCA_of_poolQTL[is.na(PSA_1tol_5sus), PSA_1tol_5sus := glue(samplepoolname)] # paste0("Sample pool (",pool,")")
-PCA_of_poolQTL  <- PCA_of_poolQTL[, PSA_1tol_5sus := str_replace_all(PCA_of_poolQTL$PSA_1tol_5sus, c( "^1"="Tolerant plant", "^2"="Tolerant plant", "^3"="Susceptible plant", "^4"="Susceptible plant", "^5"="Susceptible plant"))] 
-PCA_of_poolQTL  <- PCA_of_poolQTL[, chr_n := str_replace_all(s3, "chr", "")][, chr_n := as.numeric(chr_n)][order(chr_n)]
-QTL_name_levels  <- factor(PCA_of_poolQTL[,QTL_name], levels = unique(PCA_of_poolQTL$QTL_name))
+samplepoolname  <- paste0("Sample bulk (",pool,"b)")
 
+PCA_of_poolQTL  <- PCA_of_poolQTL[is.na(PSA_1tol_5sus), PSA_1tol_5sus := glue(samplepoolname)] # paste0("Sample pool (",pool,")")
+PCA_of_poolQTL  <- PCA_of_poolQTL[, PSA_1tol_5sus := str_replace_all(PCA_of_poolQTL$PSA_1tol_5sus, c( "^1"="Tolerant individual", "^2"="Tolerant individual", "^3"="Susceptible individual", "^4"="Susceptible individual", "^5"="Susceptible individual"))] 
+PCA_of_poolQTL  <- PCA_of_poolQTL[, chr_n := str_replace_all(s3, "chr", "")][, chr_n := as.numeric(chr_n)][order(chr_n)]
+psob       <- data.table(parentsofbulk)
+psob       <- psob[, nc := paste0("^", parentsofbulk,"$")]
+psob       <- psob$nc
+
+#PCA_of_poolQTL$PSAp
+PCA_of_poolQTL  <- PCA_of_poolQTL[, "PSAp" := str_detect(PCA_of_poolQTL$PedigreeItem3,str_c(psob, collapse = "|"))]
+PCA_of_poolQTL  <- PCA_of_poolQTL[, PSAp := str_replace_all(PSAp, "TRUE", "parent")][, "PSAp" := str_replace_all(PSAp, "FALSE", "")]
+PCA_of_poolQTL  <- PCA_of_poolQTL[, PSA_1tol_5sus := paste0(PSA_1tol_5sus, PSAp)]
+PCA_of_poolQTL  <- PCA_of_poolQTL[, PSA_1tol_5sus := str_replace_all(PSA_1tol_5sus,"Tolerant individualparent", "Tolerant parent" )]
+PCA_of_poolQTL  <- PCA_of_poolQTL[, PSA_1tol_5sus := str_replace_all(PSA_1tol_5sus,"Susceptible individualparent", "Susceptible parent" )]
+PCA_of_poolQTL  <- PCA_of_poolQTL[, PSA_1tol_5sus := str_replace_all(PSA_1tol_5sus,"\\) parent", "\\)" )]
+
+QTL_name_levels     <- factor(PCA_of_poolQTL[,QTL_name], levels = unique(PCA_of_poolQTL$QTL_name))
 PC1_contribution    <- round((res_svd$d/sum(res_svd$d)*100)[1], digits=2) #all contributions(res_svd$d/sum(res_svd$d)*100)[1:6]
 PC2_contribution    <- round((res_svd$d/sum(res_svd$d)*100)[2], digits=2)
+poolb               <- paste0(pool,"b")
+QTLposition         <- as.numeric(round(as.numeric(unique(PCA_of_poolQTL$s4))/1000000, digits = 1))
+QTLchromosome       <- unique(PCA_of_poolQTL$s3)
+QTLchromosome       <- str_replace(QTLchromosome, "chr", "chr ")
+tt                  <- toString(samplepoolname)
+tt                  <- list(samplepoolname)
+tt<- unlist(tt)
+colour_levels  <- factor(PCA_of_poolQTL[,PSA_1tol_5sus], levels = c(samplepoolname,"Tolerant individual","Tolerant parent","Susceptible individual","Susceptible parent"))
+colour_values  <-  c(samplepoolname = "black", "Tolerant individual" = "darkgreen", "Susceptible individual" = "red", "Tolerant parent" = "darkgreen", "Susceptible parent" = "red")
+names(colour_values)[1] <- samplepoolname
+shape_values  <-  c(samplepoolname = 8, "Tolerant individual" = 16, "Susceptible individual" = 17, "Tolerant parent" = 21, "Susceptible parent" = 24)
+names(shape_values)[1] <- samplepoolname
+
 
 PCA_of_poolQTLp <- function(A) {
-    ggplot(PCA_of_poolQTL, aes(x=V3, y=V2, colour=QTL_name_levels, fill=QTL_name_levels,shape=as.factor(PSA_1tol_5sus)))+ #,shape=PSA_1tol_5sus
-    geom_point(size= 3, alpha = 7/10)+
-    scale_shape_manual(values=c(8,16,17)) +
-    scale_colour_viridis_d() +
-    scale_x_continuous(name=paste0("PC2 (",PC2_contribution," %)")) + #
-    scale_y_continuous(name=paste0("PC1 (",PC1_contribution," %)")) + #, breaks=seq(-0.2,0.2,0.04)
-    theme(plot.title   = element_text(hjust = 0.5, vjust = 0.5, size=12, family="Arial"),
-          axis.title.y = element_text(hjust = 0.5, vjust = 0.5, size=8, family="Arial"),
-          axis.title.x = element_text(hjust = 0.5, vjust = 0,   size=8, family="Arial"),
-          axis.text.x  = element_text(angle = 0,   vjust = 0.5, size=8, family="Arial"),
-          axis.text.y  = element_text(vjust = 0,   hjust = 0.5, size=8, family="Arial"),
-          legend.title = element_text(size=9, family="Arial"),
-          legend.text  = element_text(size=8, family="Arial"))+
-    guides(shape = guide_legend(str_wrap(paste0("PSA phenotype of parental individuals with the sample pool QTL were derived from"), 23), order=1), colour = guide_legend("QTL name", order=2), fill="none")+
-      ggtitle(as.expression(bquote(atop("The contribution of alleles from pool" ~ .(pool) ~ "to PSA phenotype", "in parental" ~ italic("A. chinensis") ~ "var." ~ italic("chinensis") ~ "individuals"))))
+    ggplot(PCA_of_poolQTL, aes(x=V3, y=V2, colour=as.factor(colour_levels),shape=as.factor(colour_levels)))+ #,shape=PSA_1tol_5sus #, fill=QTL_name_levels
+    geom_hline(yintercept=0, color = "white", size = 0.5) +
+    geom_vline(xintercept=0, color = "white", size = 0.5) +    
+    geom_point(size= 3, alpha = 9/10)+
+    scale_shape_manual(values= shape_values) +  #c(8,16,17,24,21)
+    scale_colour_manual(values = colour_values) +
+    scale_x_continuous(name=paste0("PC1 (",PC1_contribution," %)")) + #
+    scale_y_continuous(name=paste0("PC2 (",PC2_contribution," %)")) + #, breaks=seq(-0.2,0.2,0.04)
+    #theme_classic()+
+    theme(plot.title   = element_text(hjust = 0, vjust = 0.5, size=12, family="Arial"),
+          axis.title.y = element_text(hjust = 0.5, vjust = 0.5, size=12, family="Arial"),
+          axis.title.x = element_text(hjust = 0.5, vjust = 0,   size=12, family="Arial"),
+          axis.text.x  = element_text(angle = 0,   vjust = 0.5, size=12, family="Arial"),
+          axis.text.y  = element_text(vjust = 0,   hjust = 0.5, size=12, family="Arial"),
+          #axis.line    = element_line(),
+          panel.background = element_rect(fill = "grey90", linetype=NULL),
+          panel.grid.major = element_blank(), 
+          panel.grid.minor = element_blank(),
+          legend.title = element_text(size=12, family="Arial"),
+          legend.text  = element_text(size=12, family="Arial"))+
+    guides(shape = guide_legend(str_wrap(paste0("Sample bulk, Psa phenotype of parents contributing to sample bulk with WGS and individuals with Psa phenotype and WGS"), 23)), fill="none", colour = guide_legend(str_wrap(paste0("Sample bulk, Psa phenotype of parents contributing to sample bulk with WGS and individuals with Psa phenotype and WGS"), 23))) #, order=1, order=2
+  #, QTLchromosome," at ", QTLposition," Mb"
+      #ggtitle(str_wrap(paste0("QTL from ", QTLposition, " Mb along ", QTLchromosome), 50))
+    #ggtitle(as.expression(bquote(atop("The contribution of alleles from bulk" ~ .(poolb) ~ "to Psa phenotype", "in parental" ~ italic("A. chinensis") ~ "var." ~ italic("chinensis") ~ "individuals"))))
 }
-#, italic("A. chinensis"), " var. ", italic("chinensis"), "individuals")
-#as.expression(bquote(R^2 == .(rsq)
-#as.expression(bquote(R^2~"="~.(rsq))))
+
 p <- PCA_of_poolQTLp()
-ggsave(paste0("PCA_poolparents_vs_pool_",pool,".png"), plot = p, height = 11, width=16, units = c("cm"), dpi = 320)
-#p
+p
+ggsave(paste0("PCA_bulk_vs_psa_",ii,".png"), plot = p, height = 11, width=16, units = c("cm"), dpi = 320)
+
+}
 }
 ```
