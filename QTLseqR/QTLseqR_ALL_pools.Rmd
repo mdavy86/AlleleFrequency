@@ -280,38 +280,50 @@ BSAsnps <- BSAsnps[parent =="P1_bsa" | parent =="P2_bsa" | parent == "P3_bsa" | 
 
 #BSAsnps <- BSAsnps[, parent := str_replace_all(parent, c("sp_bsa" = "sp_bsa"))]
 BSAsnps <- BSAsnps[, "overlap" := .N, by=c("POSmb","Chromosome")]
-#calculate percentage of position along chromosomes so it can be fit as 1.x on the x axis.
 
+#calculate percentage of position along chromosomes so it can be fit as 1.x on the x axis.
 BSAsnps <- BSAsnps[, "CHR_POSpercent" := paste0(Chromosome,".",POS/max(POS)), by=Chromosome]
 
 #check for incorrect duplicates
 #BSAsnpstest <- BSAsnps[overlap==4 & Chromosome==11, ]
 
-fwrite(BSAsnps, file="BSA0.5snps.csv")
-t<- as.character(seq(1,29,1))
+#fwrite(BSAsnps, file="BSA0.5snps.csv")
+#t<- as.character(seq(1,29,1))
 
 #Plot region overlap
-colours1 <- c("1" = "gold", "2" = "gold3", "3" = "darkolivegreen4", "4" = "darkgreen")
-shape1 <- c("1" = 15, "2" = 20, "3" = 18, "4" = 8)
+#colours1 <- c("1" = "gold", "2" = "gold3", "3" = "darkolivegreen4", "4" = "darkgreen")
+#shape1 <- c("1" = 15, "2" = 20, "3" = 18, "4" = 8)
+shape1 <- c("1" = 21, "2" = 22, "3" = 23, "4" = 24)
 #BSAsnps_sorted <- BSAsnps[order(-overlap)] #sorts into order so the most frequent sites are plotted last and thus ontop.
+BSAsnps_peakpoint <- BSAsnps[top=="Top 0.5 % SNPs",]
+BSAsnps_peakpoint <- BSAsnps_peakpoint[, "split_chr11" := parent]#chr11 split
+BSAsnps_peakpoint <- BSAsnps_peakpoint[parent=="P3_bsa" & CHROM=="chr11" & POS==17004370, split_chr11 := "P3sp_bsa_17mb"]#chr11 split 
+BSAsnps_peakpoint <- BSAsnps_peakpoint[, "Gp_max" := max(Gprime), by=.(split_chr11,CHROM)]
+BSAsnps_peakpoint <- BSAsnps_peakpoint[CHROM=="chr11" & POS==17004370 | POS==17004424| POS==17004333, overlap := 4][CHROM=="chr4" & POS==13028990 | POS==13028701| POS==13028743, overlap := 3][CHROM=="chr10" & POS==12925425 | POS==12923146, overlap := 2][CHROM=="chr18" & POS==17013259 | POS==17013345, overlap := 2][CHROM=="chr22" & POS==8086169 | POS==8070518 | POS==8070212, overlap := 3][CHROM=="chr2" & POS==5720903 | POS==6296002 | POS==5714634, overlap := 3][CHROM=="chr14" & POS==10825283 | POS==11436270, overlap := 2]
 
-p <- ggplot(data=BSAsnps, aes(x=Chromosome, y=POSmb))+
-geom_point(aes(colour=BSAsnps[,parent],size=BSAsnps[,overlap], shape=factor(BSAsnps[,overlap])), na.rm=T)+#
+BSAsnps_peakpoint <- BSAsnps_peakpoint[Gp_max == Gprime, by=.(split_chr11,CHROM)]
+#give second Gp_max at max GP for P3 chr11 which has 2 peaks on the same chr to split
+
+
+p <- ggplot(data=BSAsnps_peakpoint, aes(x=Chromosome, y=POSmb))+
+geom_point(aes(colour=BSAsnps_peakpoint[,parent], fill=factor(BSAsnps_peakpoint[,parent]), shape=factor(BSAsnps_peakpoint[,overlap])), na.rm=T, alpha=0.8, size = 5, position =position_jitter(seed = 43))+# ,size=BSAsnps_peakpoint[,overlap]
 scale_shape_manual(values=shape1) +
-#scale_colour_manual(values=colours1) +
+scale_colour_viridis_d() +
+  scale_fill_viridis_d(guide="none") +
 guides(size=guide_legend(order=1), shape=guide_legend(order=1), color= guide_legend(order=2))+
-theme_bw()+
+#theme_bw()+
 theme(plot.title =element_text(color = "grey20", size = 12, angle = 0, hjust = .5, vjust = 0, face = "plain"),
   legend.text    =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = .5, face = "plain"),
   legend.title   =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = 0, face = "plain"),
   axis.text.x    =element_text(color = "grey20", size = 12, angle = 0, hjust = .5, vjust = 0, face = "plain"),
   axis.text.y    =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = 0, face = "plain"),  
   axis.title.x   =element_text(color = "grey20", size = 12, angle = 0, hjust = .5, vjust = 0, face = "plain"),
-  axis.title.y   =element_text(color = "grey20", size = 12, angle = 90, hjust = .5, vjust = .5, face = "plain"),
-  panel.grid = element_blank())+
+  axis.title.y   =element_text(color = "grey20", size = 12, angle = 90, hjust = .5, vjust = .5, face = "plain"))+
+  #panel.grid = element_blank())+
   labs(size=str_wrap("Number of QTL overlapping between bulk analyses",17))+
   labs(shape=str_wrap("Number of QTL overlapping between bulk analyses",17))+  
   labs(colour=str_wrap("BSA name",17))+
+  #labs(fill=str_wrap("BSA name",17))+
   scale_y_continuous(n.breaks = 8)+
   xlab("Chromosome")+
   ylab("Position (Mb)")
