@@ -3,9 +3,9 @@ title: "qtlseqr"
 author: "Casey Flay"
 date: "12/08/2021"
 output:
+  word_document: default
   html_document:
     df_print: paged
-  word_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -27,14 +27,14 @@ compare_mpool  <- compare_mpool[, V2 := str_replace_all(V1, "_malepool_compare.c
                   ][, V2 := str_replace_all(V2, ".csv" , "&.csv")
                   ][, c("V2", "V3", "V4") := tstrsplit(V2, "&", fixed=TRUE)]
 compare_mpool  <- compare_mpool[, "V4" := str_sub(compare_mpool[,V1], 1, 1)] #get column for first letter
-compare_mpool  <- compare_mpool[V4=="E"]#V4=="F"|V4=="G"|V4=="H"|V4=="I"#too big to run all at once.  cycle through A,BC,DE,FGHIJ manually
+compare_mpool  <- compare_mpool[V4=="F"|V4=="G"|V4=="H"|V4=="I"]#V4=="A" #V4=="B"|V4=="C" #V4=="D"|V4=="E" #V4=="F"|V4=="G"|V4=="H"|V4=="I"#too big to run all at once.  cycle through A,BC,DE,FGHIJ manually
 ```
 
 ```{r group samples against parent pools and rename for QTLseqR and assign columns for QTLseqR}
 obj_names <- compare_mpool[,V2]
 my_files  <- compare_mpool[,V1]
 
-#70gb RAM load below, only run when reduction filters are inplace
+#70gb RAM load below if not cycling through pools A,BC, DE.., only run full set when reduction filters are inplace
 for(i in seq(along=my_files)) {
   assign(obj_names[i], fread(my_files[i]))
 }
@@ -88,7 +88,7 @@ for(i in seq(along=obj_names)) {
 ```{r QTLseqAnalysis}
 for(i in seq(along=obj_names)) {
   dt_name <- get(obj_names[i], envir = .GlobalEnv)
-  dt_name <-assign(obj_names[i], runQTLseqAnalysis(dt_name,windowSize = 1e6, popStruc = "F1", bulkSize = c(10,10), replications = 10000, intervals = c(95, 99)))
+  dt_name <-assign(obj_names[i], runQTLseqAnalysis(dt_name,windowSize = 1e6, popStruc = "F1", bulkSize = c(20,20), replications = 10000, intervals = c(95, 99)))
 }
 ```
 
@@ -141,8 +141,8 @@ for(i in seq(along=obj_names)) {
 dt_name <- as.data.table(get(obj_names[i], envir = .GlobalEnv))
 
 dt_name <- assign(obj_names[i], dt_name[,"POSmb" := POS/1000000])
-quant<- as.numeric(quantile(dt_name[,negLog10Pval], probs = 0.99, na.rm=T))#probs0.999 gives top 0.001% of SNPs
-dt_name <- assign(obj_names[i], dt_name[negLog10Pval>quant, "top":="Top 1%"][negLog10Pval<quant, top:="Remaining SNPs"])
+quant<- as.numeric(quantile(dt_name[,negLog10Pval], probs = 0.995, na.rm=T))#probs0.995 gives top 0.5% of SNPs
+dt_name <- assign(obj_names[i], dt_name[negLog10Pval>quant, "top":="Top 0.5%"][negLog10Pval<quant, top:="Remaining SNPs"])
 threshold <- min(dt_name[qvalue<0.05, negLog10Pval])
 
 if(!is.null(dt_name$AD_REF.HIGH)){
@@ -157,8 +157,8 @@ for(i in seq(along=obj_names)) {
 dt_name   <- as.data.table(get(obj_names[i], envir = .GlobalEnv))
 
 dt_name   <- assign(obj_names[i], dt_name[,"POSmb" := POS/1000000])
-quant     <- as.numeric(quantile(dt_name[,negLog10Pval], probs = 0.99, na.rm=T))#probs0.999 gives top 0.001% of SNPs
-dt_name   <- assign(obj_names[i], dt_name[negLog10Pval>quant, "top":="Top 0.01%"][negLog10Pval<quant, top:="Remaining SNPs"])
+quant     <- as.numeric(quantile(dt_name[,negLog10Pval], probs = 0.995, na.rm=T))#probs0.995 gives top 0.5% of SNPs
+dt_name   <- assign(obj_names[i], dt_name[negLog10Pval>quant, "top":="Top 0.5%"][negLog10Pval<quant, top:="Remaining SNPs"])
 threshold <- min(dt_name[qvalue<0.05, negLog10Pval])
 threshold[!is.finite(threshold)] <- 0
 
@@ -170,7 +170,7 @@ p <- ggplot(data=dt_name, aes(x=POSmb, y=negLog10Pval))+
   labs(title = obj_names[i]) +
   scale_fill_discrete(guide=FALSE)+
   geom_point(aes(color=factor(dt_name[,top])),size=0.5, na.rm=T)+
-  scale_color_manual(name="top",breaks = c("Top 0.01%","Remaining SNPs"),values=c("chartreuse3","black"))+
+  scale_color_manual(name="top",breaks = c("Top 0.5%","Remaining SNPs"),values=c("chartreuse3","black"))+
   scale_x_continuous(limits=c(0, 20), breaks=c(0, 5, 10, 15))+
   xlab("Nucleotide Position")+  
   ylab("-Log10 p-value")+
@@ -180,13 +180,14 @@ print(p)
 } else {
   #else apply graph with no threshold line
   p <- ggplot(data=dt_name, aes(x=POSmb, y=negLog10Pval))+
-  labs(title = obj_names[i], ) +
-  scale_fill_discrete(guide=FALSE)+
   geom_point(aes(color=factor(dt_name[,top])),size=0.5, na.rm=T)+
-  geom_hline(yintercept = threshold, linetype='dashed')+  
-  scale_color_manual(name="top",breaks = c("Top 0.01%","Remaining SNPs"),values=c("chartreuse3","black"))+
+  geom_hline(yintercept = threshold, linetype='dashed')+   
+  #scale_fill_discrete(guide=FALSE)+
+  labs(title = obj_names[i], ) +
+   
+  scale_color_manual(name="top",breaks = c("Top 0.5%","Remaining SNPs"),values=c("chartreuse3","black"))+
   scale_x_continuous(limits=c(0, 20), breaks=c(0, 5, 10, 15))+
-  xlab("Nucleotide Position")+  
+  xlab("Genomic position (Mb)")+  
   ylab("-Log10 p-value")+
   facet_wrap(~CHROM, nrow=3, ncol=10)
   print(p)
@@ -196,31 +197,80 @@ ggsave(paste0(obj_names[i],"_chr25_mplotg.png"), plot = last_plot(), width = 10,
 }
 ```
 
+```{r ggplot strip, eval=TRUE, warnings=FALSE, include=TRUE, fig.show="hold", fig.width= 15}
+for(i in seq(along=obj_names)) {
+dt_name   <- as.data.table(get(obj_names[i], envir = .GlobalEnv))
+
+dt_name   <- assign(obj_names[i], dt_name[,"POSmb" := POS/1000000])
+quant     <- as.numeric(quantile(dt_name[,Gprime], probs = 0.995, na.rm=T))#probs0.995 gives top 0.5% of SNPs
+dt_name   <- assign(obj_names[i], dt_name[Gprime>quant, "top":="Top 0.5%"][Gprime<quant, top:="Remaining SNPs"])
+threshold <- min(dt_name[qvalue<0.05, Gprime])
+threshold[!is.finite(threshold)] <- 0
+
+#dt_name   <- dt_name[CHROM=="chr25",]#just chr25
+
+if  (threshold==0){
+    #if there is a significant threshold to plot apply hline threshold to graph
+p <- ggplot(data=dt_name, aes(x=POSmb, y=Gprime))+
+  labs(title = obj_names[i]) +
+  #scale_fill_discrete(guide=FALSE)+
+  geom_point(aes(color=factor(dt_name[,top])),size=0.5, na.rm=T)+
+  scale_color_manual(name="Top SNPs",breaks = c("Top 0.5%","Remaining SNPs"),values=c("chartreuse3","black"))+
+  scale_x_continuous(limits=c(0, 20), breaks=c(0, 5, 10, 15))+
+  xlab("Nucleotide Position")+  
+  ylab("Gprime")+
+  facet_wrap(~CHROM, nrow=1)
+  #print(p)
+
+} else {
+  #else apply graph with no threshold line
+  p <- ggplot(data=dt_name, aes(x=POSmb, y=Gprime))+
+  geom_point(aes(color=factor(dt_name[,top])),size=0.5, na.rm=T)+
+  geom_hline(yintercept = threshold, linetype='dashed')+   
+  #scale_fill_discrete(guide=FALSE)+
+  labs(title = obj_names[i], ) +
+  scale_color_manual(name="Top SNPs",breaks = c("Top 0.5%","Remaining SNPs"),values=c("chartreuse3","black"))+
+  scale_x_continuous(limits=c(0, 20), breaks=c(0, 5, 10, 15))+
+  xlab("Genomic position (Mb)")+  
+  ylab("Gprime")+
+  facet_wrap(~CHROM, nrow=1)
+  #print(p)
+}
+
+ggsave(paste0(obj_names[i],"_mplot.png"), plot = p, width = 55, height = 7, units = c("cm"), dpi = 320)
+}
+```
+
 ```{r write top 1percent snps and sig snps so seperate plots can be made of each for chr25}
 for(i in seq(along=obj_names)) {
 dt_name <- as.data.table(get(obj_names[i], envir = .GlobalEnv))
 
 dt_name   <- dt_name[,"parent" := obj_names[i]]
 dt_name   <- assign(obj_names[i], dt_name[,"POSmb" := POS/1000000])
-quant     <- as.numeric(quantile(dt_name[,negLog10Pval], probs = 0.99, na.rm=T))#probs0.999 gives top 0.001% of SNPs
-dt_name   <- assign(obj_names[i], dt_name[negLog10Pval>quant, "top":="Top0.01_percent"][negLog10Pval<quant, top:="Remaining_SNPs"])
+quant     <- as.numeric(quantile(dt_name[,Gprime], probs = 0.999, na.rm=T))#probs0.999 gives top 0.1% of SNPs
+dt_name   <- assign(obj_names[i], dt_name[Gprime>quant, "top":="Top 0.1%"][Gprime<quant, top:="Remaining_SNPs"])
 
-dt_name   <- dt_name[, "neglog10threshold":= min(dt_name[qvalue<0.05, negLog10Pval])][neglog10threshold==Inf, neglog10threshold:=100]
+dt_name   <- dt_name[, "Gprimethreshold":= min(dt_name[qvalue<0.05, Gprime])][Gprimethreshold==Inf, Gprimethreshold:=100]
 
 dt_name   <- dt_name[qvalue>0.05, "sig" := "insignificant"][qvalue<0.05, sig := "significant"]
 
-dt_name   <- dt_name[top=="Top0.01_percent"|sig == "significant",] #filter just top and significant
+dt_name   <- dt_name[top=="Top 0.1%"|sig == "significant",] #filter just top and significant
 fwrite(dt_name, file="de_topandsig_maleaf_snps.csv", append=T) #rename this chunk for A,BC,DE,FGHI runs
 }
 ```
 
-```{r ggplot significant and top1%graphs, eval=FALSE, warnings=FALSE, include=TRUE, fig.show="hold", fig.width= 15}
-s1    <- fread("a_topandsig_maleaf_snps.csv")
-s2    <- fread("bc_topandsig_maleaf_snps.csv")
-s3    <- fread("de_topandsig_maleaf_snps.csv")
-s4    <- fread("fghi_topandsig_maleaf_snps.csv")
+```{r ggplot significant and top1%graphs, eval=TRUE, warnings=FALSE, include=TRUE, fig.show="hold", fig.width= 7}
+s1    <- fread("a_topandsig_maleaf_snps.csv",fill=TRUE)
+s2    <- fread("bc_topandsig_maleaf_snps.csv",fill=TRUE)
+s3    <- fread("de_topandsig_maleaf_snps.csv",fill=TRUE)
+s4    <- fread("fghi_topandsig_maleaf_snps.csv",fill=TRUE)
 
 sigs   <- rbindlist(list(s1,s2,s3,s4))
+rm(s1,s2,s3,s4)
+
+#numbers of things for methods
+number_of_comparisons <- unique(sigs$parent)
+
 
 sigs   <- sigs[CHROM=="chr25"&parent!="A1D6"&parent!="B2D6"&parent!="C3D6"&parent!="D6E11"&parent!="D6F12"&parent!="D6G13"&parent!="D6H14"&parent!="D6I15"&parent!="D6J16",]#just chr25, and exclude D
 
@@ -230,56 +280,134 @@ for(i in seq(along=comparison_percentage[,V1])) {
   i <- comparison_percentage[i,]
   sigs <- sigs[parent == i$V1, "male_diff":=  i$V2]
 }
+sigs <- sigs[, "male_percent" := male_diff*100]
 
-qsig <- sigs[sig=="significant",]
-lq <- ggplot(data=qsig, aes(x=POSmb, y=negLog10Pval))+
-  labs(title = "Significant SNPs on chr25") +
-  geom_point(aes(color=male_diff),size=0.01, na.rm=T)+
-  #scale_color_manual(name="top",breaks = c("Top 0.01%","Remaining SNPs"),values=c("chartreuse3","black"))+
-  scale_x_continuous(limits=c(0, 15), breaks=c(0, 5, 10, 15))+
-  xlab("Nucleotide Position")+  
-  ylab("-Log10 p-value")+
-  facet_wrap(~CHROM, nrow=3, ncol=10)
-lq
-
-topperc <- sigs[top=="Top0.01_percent",]
-lt <- ggplot(data=topperc, aes(x=POSmb, y=negLog10Pval))+
-  labs(title = "Top 1% of SNPs on chr25") +
-  geom_point(aes(color=male_diff),size=0.01, na.rm=T)+
-  #scale_color_manual(name="top",breaks = c("Top 0.01%","Remaining SNPs"),values=c("chartreuse3","black"))+
-  scale_x_continuous(limits=c(0, 15), breaks=c(0, 5, 10, 15))+
-  xlab("Nucleotide Position")+  
-  ylab("-Log10 p-value")+
-  facet_wrap(~CHROM, nrow=3, ncol=10)
-lt
+# qsig <- sigs[sig=="significant",]
+# lq <- ggplot(data=qsig, aes(x=POSmb, y=negLog10Pval))+
+#   #labs(title = "Significant SNPs on chr25") +
+#   geom_point(aes(color=male_percent),size=0.01, na.rm=T)+
+#   #scale_color_manual(name="top",breaks = c("Top 0.01%","Remaining SNPs"),values=c("chartreuse3","black"))+
+#   scale_x_continuous(limits=c(0, 15), breaks=c(0, 5, 10, 15))+
+#   xlab("Chromosome 25 (Mb)")+  
+#   ylab("-Log10 p-value")+
+#   facet_wrap(~CHROM, nrow=3, ncol=10)
+# lq
+# topperc <- sigs[top=="Top0.01_percent",]
+# lt <- ggplot(data=topperc, aes(x=POSmb, y=negLog10Pval))+
+#   labs(title = "Top 0.01% of SNPs on chr25") +
+#   geom_point(aes(color=male_diff),size=0.01, na.rm=T)+
+#   #scale_color_manual(name="top",breaks = c("Top 0.01%","Remaining SNPs"),values=c("chartreuse3","black"))+
+#   scale_x_continuous(limits=c(0, 15), breaks=c(0, 5, 10, 15))+
+#   xlab("Nucleotide Position")+  
+#   ylab("-Log10 p-value")+
+#   facet_wrap(~CHROM, nrow=3, ncol=10)
+# lt
 
 qsig <- sigs[sig=="significant",]
 gq <- ggplot(data=qsig, aes(x=POSmb, y=Gprime))+
-  labs(title = "Significant SNPs on chr25") +
-  geom_point(aes(color=male_diff),size=0.01, na.rm=T)+
-  #scale_color_manual(name="top",breaks = c("Top 0.01%","Remaining SNPs"),values=c("chartreuse3","black"))+
+  geom_point(aes(color=male_percent),size=0.01, na.rm=T)+
+  labs(title = "Significant SNPs (qvalue > 0.05)") +
+  theme(plot.title =element_text(color = "grey20", size = 14, angle = 0, hjust = .5, vjust = 0, face = "plain"),
+  legend.text    =element_text(color = "grey20", size = 14, angle = 0, hjust = 0, vjust = .5, face = "plain"),
+  legend.title   =element_text(color = "grey20", size = 14, angle = 0, hjust = 0, vjust = 0, face = "plain"),
+  axis.text.x    =element_text(color = "grey20", size = 14, angle = 0, hjust = .5, vjust = 0, face = "plain"),
+  axis.text.y    =element_text(color = "grey20", size = 14, angle = 0, hjust = 0, vjust = 0, face = "plain"),  
+  axis.title.x   =element_text(color = "grey20", size = 14, angle = 0, hjust = .5, vjust = 0, face = "plain"),
+  axis.title.y   =element_text(color = "grey20", size = 14, angle = 90, hjust = .5, vjust = .5, face = "plain"),
+  axis.line = element_line(colour = "grey20"),
+  strip.background = element_blank(),
+  strip.text = element_blank(),
+  legend.box.background = element_rect(),
+  legend.position = c(.99, .99),
+  legend.justification = c("right", "top"),
+  legend.box.just = "right",
+  legend.box.margin = margin(3, 3, 3, 3),
+  panel.background = element_rect(fill = NA))+
   scale_x_continuous(limits=c(0, 15), breaks=c(0, 5, 10, 15))+
-  xlab("Nucleotide Position")+  
-  ylab("-Gprime")+
-  facet_wrap(~CHROM, nrow=3, ncol=10)
+  scale_colour_continuous(limits = c(0,80), breaks = c(20, 40, 60, 80))+
+  labs(colour=str_wrap('Percent difference in male contribution to bulk pair', 12))+ 
+  xlab("Chromosome 25 (Mb)")+  
+  ylab("Gprime")
 gq
 
-topperc <- sigs[top=="Top0.01_percent",]
-gt <- ggplot(data=topperc, aes(x=POSmb, y=Gprime))+
-  labs(title = "Top 1% of SNPs on chr25") +
-  geom_point(aes(color=male_diff),size=0.01, na.rm=T)+
-  #scale_color_manual(name="top",breaks = c("Top 0.01%","Remaining SNPs"),values=c("chartreuse3","black"))+
+topperc <- sigs[top=="Top0.01_percent" | top=="Top0.5_percent",]
+lt <- ggplot(data=topperc, aes(x=POSmb, y=Gprime))+
+  geom_point(aes(color=male_percent),size=0.01, na.rm=T)+
+  labs(title = "Top 0.5 % of SNPs") +
+  theme(plot.title =element_text(color = "grey20", size = 14, angle = 0, hjust = .5, vjust = 0, face = "plain"),
+  legend.text    =element_text(color = "grey20", size = 14, angle = 0, hjust = 0, vjust = .5, face = "plain"),
+  legend.title   =element_text(color = "grey20", size = 14, angle = 0, hjust = 0, vjust = 0, face = "plain"),
+  axis.text.x    =element_text(color = "grey20", size = 14, angle = 0, hjust = .5, vjust = 0, face = "plain"),
+  axis.text.y    =element_text(color = "grey20", size = 14, angle = 0, hjust = 0, vjust = 0, face = "plain"),  
+  axis.title.x   =element_text(color = "grey20", size = 14, angle = 0, hjust = .5, vjust = 0, face = "plain"),
+  axis.title.y   =element_text(color = "grey20", size = 14, angle = 90, hjust = .5, vjust = .5, face = "plain"),
+  axis.line = element_line(colour = "grey20"),
+  strip.background = element_blank(),
+  strip.text = element_blank(),
+  legend.box.background = element_rect(),
+  legend.position = c(.99, .99),
+  legend.justification = c("right", "top"),
+  legend.box.just = "right",
+  legend.box.margin = margin(3, 3, 3, 3),
+  panel.background = element_rect(fill = NA))+
   scale_x_continuous(limits=c(0, 15), breaks=c(0, 5, 10, 15))+
-  xlab("Nucleotide Position")+  
-  ylab("-Gprime")+
-  facet_wrap(~CHROM, nrow=3, ncol=10)
-gt
+  scale_colour_continuous(limits = c(0,80), breaks = c(20, 40, 60, 80))+
+  labs(colour=str_wrap('Percent difference in male contribution to bulk pair', 12))+ 
+  xlab("Chromosome 25 (Mb)")+  
+  ylab("Gprime")
+lt
 
-ggsave("neglogp_q_Significant_SNPs_on_chr25.png", plot = lq, width = 15, height = 10, units = c("cm"), dpi = 320)
-ggsave("neglogp_Top0.01_percent_SNPs_on_chr25.png", plot = lt, width = 15, height = 10, units = c("cm"), dpi = 320)
-ggsave("Gprime_q_Significant_SNPs_on_chr25.png", plot = gq, width = 15, height = 10, units = c("cm"), dpi = 320)
-ggsave("Gprime_Top1perc_SNPs_on_chr25.png", plot = gt, width = 15, height = 10, units = c("cm"), dpi = 320)
+##ggsave("neglogp_q_Significant_SNPs_on_chr25.png", plot = lq, width = 15, height = 10, units = c("cm"), dpi = 320)
+ggsave("Gprime_q_Significant_SNPs_on_chr25.png", plot = gq, width = 15, height = 13, units = c("cm"), dpi = 320)
+ggsave("Gprime_Top0.1_percent_SNPs_on_chr25.png", plot = lt, width = 15, height = 13, units = c("cm"), dpi = 320)
+
 ```
 
+```{r ggplot not just chr25, eval=TRUE, warnings=FALSE, include=TRUE, fig.show="hold", fig.width= 7}
+s1    <- fread("a_topandsig_maleaf_snps.csv",fill=TRUE)
+s2    <- fread("bc_topandsig_maleaf_snps.csv",fill=TRUE)
+s3    <- fread("de_topandsig_maleaf_snps.csv",fill=TRUE)
+s4    <- fread("fghi_topandsig_maleaf_snps.csv",fill=TRUE)
+
+sigs   <- rbindlist(list(s1,s2,s3,s4))
+rm(s1,s2,s3,s4)
 
 
+sigs   <- sigs[parent!="A1D6"&parent!="B2D6"&parent!="C3D6"&parent!="D6E11"&parent!="D6F12"&parent!="D6G13"&parent!="D6H14"&parent!="D6I15"&parent!="D6J16",]#exclude D
+
+
+
+#Add male percentage for colour scale
+comparison_percentage <- fread("comparison_percentage.csv")# from\Projects\Fst%20mapping\individuals%20pooled\AlleleFrequencyTestParentage.xlsx
+for(i in seq(along=comparison_percentage[,V1])) {
+  i <- comparison_percentage[i,]
+  sigs <- sigs[parent == i$V1, "male_diff":=  i$V2]
+}
+sigs <- sigs[, "male_percent" := male_diff*100]
+tt <- sigs[parent=="A1B2",]
+top05 <- sigs[, "top05p" := str_replace_all(top, "Top0.01_percent","Top0.5_percent")]
+top05 <- top05[, top05p := str_replace_na(top05p , replacement = "rxx")]
+# top05 <- sigs[top=="Top0.01_percent" | top=="Top0.5_percent", "top05p" := "top0.5"]#[top!="Top0.01_percent" | top!="Top0.5_percent", "top05p" := "Remaining SNPs"]
+BSAnames <- unique(top05$parent) #each analysis name for plots
+BSAnames <- "A1B2"
+
+for (i in BSAnames){
+top05data <- top05[parent==BSAnames,]
+threshold <- min(top05data[qvalue<0.05, Gprime]) #get threshold
+threshold[!is.finite(threshold)] <- 0 #if threshold is finite
+
+p <- ggplot(data=top05data, aes(x=POSmb, y=Gprime))+
+     geom_point(aes(color=factor(top05data$top05p)),size=0.5, na.rm=T)+
+     geom_hline(yintercept = threshold, linetype='dashed')+
+     #scale_color_manual(name="top",breaks = c("top0.5","Remaining SNPs"),values=c("chartreuse3","black"))+
+     scale_x_continuous(limits=c(0, 20), breaks=c(0, 5, 10, 15))+
+     labs(title = paste(i, top05[,unique(male_percent)])) +
+     xlab("Nucleotide Position")+
+     ylab("Gprime")+
+     facet_wrap(~CHROM, nrow=1)
+     print(p)
+
+#ggsave(paste0(i,"_mplot.png"), plot = last_plot(), width = 20, height = 7, units = c("cm"), dpi = 320)
+}
+
+```
