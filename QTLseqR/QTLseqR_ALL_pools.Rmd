@@ -553,4 +553,56 @@ write.table(BSAregions[CHROM==chrs[i],], file=paste0("allBSAregions_", chrs[i], 
 
 ```
 
+##male percentages from sorting bulks and working out contributions.
+```{r male percentages}
+mp <- fread("male_percentage.txt")
+mp1 <- mp[1:36,]
+p <- ggplot(data=mp1, aes(x=row, y=percent))+
+geom_point(aes(colour=factor(qtl),fill=factor(qtl), size=0.1))+#,alpha=5/10, , size=0.5,,shape=factor(threshold) position=position_dodge(width=1)
+  scale_colour_manual(values = c("tomato", "darkgreen"))+
+  #geom_hline(yintercept = 20)+
+  #geom_text(aes(0,20,label = "80% accuracy", vjust = -1, hjust = 0.1))+
+  scale_y_continuous(labels = function(x) paste0(x, "%"))+
+  labs(title =str_wrap("QTL detection using the top 0.5 % of Gprime values as a threshold",40))+
+  theme(plot.title =element_text(color = "grey20", size = 12, angle = 0, hjust = .5, vjust = 0, face = "plain"),
+  legend.text    =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = .5, face = "plain"),
+  legend.title   =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = .5, face = "plain"),
+  legend.position="bottom",
+  axis.text.x    =element_text(color = "grey20", size = 12, angle = 0, hjust = .5, vjust = 0, face = "plain"),
+  axis.text.y    =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = 0, face = "plain"),  
+  axis.title.x   =element_text(color = "grey20", size = 12, angle = 0, hjust = .5, vjust = 0, face = "plain"),
+  axis.title.y   =element_text(color = "grey20", size = 12, angle = 90, hjust = .5, vjust = 0, face = "plain"))+
+  guides(size = "none")+
+  labs(colour=str_wrap("QTL detected on chromosome 25",200),fill=str_wrap("QTL detected on chromosome 25",200))+
+  xlab("Bulk number")+
+  ylab(str_wrap("The expected difference in sex locus allele frequency between bulks",35))
+print(p)
+
+ggsave("Perc_dif_between_bulks_top5.png", plot = p, width = 15, height = 10, units = c("cm"), dpi = 320)
+
+mp2 <- mp[37:72,]
+p <- ggplot(data=mp2, aes(x=row, y=percent))+
+geom_point(aes(colour=factor(qtl),fill=factor(qtl), size=0.1))+#,alpha=5/10, na.rm=T, size=0.5, position=position_dodge(width=1)
+  scale_colour_manual(values = c("tomato", "darkgreen"))+
+  #geom_hline(yintercept = 43)+
+  #geom_text(aes(0,43,label = "80% accuracy", vjust = -1, hjust = 0.1))+
+  scale_y_continuous(labels = function(x) paste0(x, "%"))+
+  labs(title="QTL detection using q=0.05 as a threshold")+
+  theme(plot.title =element_text(color = "grey20", size = 12, angle = 0, hjust = .5, vjust = 0, face = "plain"),
+  legend.text    =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = .5, face = "plain"),
+  legend.title   =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = .5, face = "plain"),
+  legend.position="bottom",
+  axis.text.x    =element_text(color = "grey20", size = 12, angle = 0, hjust = .5, vjust = 0, face = "plain"),
+  axis.text.y    =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = 0, face = "plain"),  
+  axis.title.x   =element_text(color = "grey20", size = 12, angle = 0, hjust = .5, vjust = 0, face = "plain"),
+  axis.title.y   =element_text(color = "grey20", size = 12, angle = 90, hjust = .5, vjust = 0, face = "plain"))+
+  guides(size = "none")+
+  labs(colour=str_wrap("QTL detected on chromosome 25",200),fill=str_wrap("QTL detected on chromosome 25",200) )+
+  xlab("Bulk number")+
+  ylab(str_wrap("The expected difference in sex locus allele frequency between bulks",35))
+print(p)
+
+ggsave("Perc_dif_between_bulks_p05.png", plot = p, width = 15, height = 10, units = c("cm"), dpi = 320)
+
+```
 
