@@ -15,6 +15,8 @@ library(glue)
 library(tidyverse)
 library(here)
 library(QTLseqr)
+library(ggplot2)
+library(ggpmisc)
 setDTthreads(1)
 module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 perlbrew/0.76")
 knitr::opts_chunk$set(echo = FALSE, include=FALSE, warning = TRUE)
@@ -36,8 +38,8 @@ mpool  <- mpool[, V2 := str_replace_all(V1, "_samplepoolSNPs_dt.csv", "&samplepo
 
 ##code to make these files is in qtlseqr_files.Rmd 
 ```{r group samples against parent pools and rename for QTLseqR and assign columns for QTLseqR}
-obj_names  <- mpool[,.(V2)]
-obj_rename <- obj_names[V2=='CK02_01_samplepoolSNPs_dt', 'rename' :="P1sp_bsa"][V2=='CK10_02_samplepoolSNPs_dt', rename :="P9sp_bsa"][V2=='CK19_03_samplepoolSNPs_dt', rename :="P2sp_bsa"][V2=='CK20_01_samplepoolSNPs_dt', rename :="P10sp_bsa"][V2=='CK22_03_samplepoolSNPs_dt', rename :="P11sp_bsa"][V2=='CK23_08_samplepoolSNPs_dt', rename :="P3sp_bsa"][V2=='CK51_01_samplepoolSNPs_dt', rename :="P12sp_bsa"][V2=='CK51_09_samplepoolSNPs_dt', rename :="P4sp_bsa"]
+obj_names  <- mpool[,.(V1)]
+obj_rename <- obj_names[V1=='CK02_01_samplepoolSNPs_dt.csv', 'rename' :="P1sp_bsa"][V1=='CK10_02_samplepoolSNPs_dt.csv', rename :="P9sp_bsa"][V1=='CK19_03_samplepoolSNPs_dt.csv', rename :="P2sp_bsa"][V1=='CK20_01_samplepoolSNPs_dt.csv', rename :="P10sp_bsa"][V1=='CK22_03_samplepoolSNPs_dt.csv', rename :="P11sp_bsa"][V1=='CK23_08_samplepoolSNPs_dt.csv', rename :="P3sp_bsa"][V1=='CK51_01_samplepoolSNPs_dt.csv', rename :="P12sp_bsa"][V1=='CK51_09_samplepoolSNPs_dt.csv', rename :="P4sp_bsa"]
 obj_names  <- obj_rename[,rename]
 my_files   <- mpool[,V1]
 
@@ -52,9 +54,15 @@ samplesnew <-c('CHROM','POS','REF','ALT','AD_REF.LOW','AD_ALT.LOW','DP.LOW','GQ.
 
 for(i in seq(along=obj_names)) {
   dt_name <- get(obj_names[i], envir = .GlobalEnv)
-  assign(obj_names[i], setnames(dt_name, glue("{samplesold}"), glue("{samplesnew}")))
+  assign(obj_names[i], setnames(dt_name, glue("{samplesold}"), glue("{samplesnew}"),skip_absent=TRUE))
 }
 ```
+
+# ```{r test chunk}
+# tt<-dt_name[1,]
+# samplesold
+# samplesnew
+# ```
 
 ```{r clean columns and change to chr01 for ggplot to assemble in the right order}
 
@@ -80,25 +88,25 @@ for(i in seq(along=obj_names)) {
 ```
 
 ```{r filter, eval=TRUE}
-# P1sp_bsa <- filterSNPs(SNPset = P1sp_bsa, refAlleleFreq = 0.05, minTotalDepth = 40, maxTotalDepth = 85, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
-# P9sp_bsa <- filterSNPs(SNPset = P9sp_bsa, refAlleleFreq = 0.05, minTotalDepth = 40, maxTotalDepth = 130, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
-# P2sp_bsa <- filterSNPs(SNPset = P2sp_bsa, refAlleleFreq = 0.05, minTotalDepth = 35, maxTotalDepth = 85, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
-# P10sp_bsa <- filterSNPs(SNPset = P10sp_bsa, refAlleleFreq = 0.05, minTotalDepth = 40, maxTotalDepth = 90, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
-# P11sp_bsa <- filterSNPs(SNPset = P11sp_bsa, refAlleleFreq = 0.05, minTotalDepth = 60, maxTotalDepth = 170, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
-# P3sp_bsa <- filterSNPs(SNPset = P3sp_bsa, refAlleleFreq = 0.05, minTotalDepth = 20, maxTotalDepth = 85, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
-# P12sp_bsa <- filterSNPs(SNPset = P12sp_bsa, refAlleleFreq = 0.05, minTotalDepth = 30, maxTotalDepth = 100, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
-# P4sp_bsa <- filterSNPs(SNPset = P4sp_bsa, refAlleleFreq = 0.05, minTotalDepth = 40, maxTotalDepth = 150, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
-Russell <- filterSNPs(SNPset = Russell, refAlleleFreq = 0.05, minTotalDepth = 10, maxTotalDepth = 90, depthDifference = 50, minSampleDepth = 10, minGQ = 50, verbose = TRUE)
-a_df <- filterSNPs(SNPset = a_df, refAlleleFreq = 0.05, minTotalDepth = 60, maxTotalDepth = 120, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
-b_df <- filterSNPs(SNPset = b_df, refAlleleFreq = 0.05, minTotalDepth = 50, maxTotalDepth = 120, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
-c_df <- filterSNPs(SNPset = c_df, refAlleleFreq = 0.05, minTotalDepth = 50, maxTotalDepth = 110, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
-d_df <- filterSNPs(SNPset = d_df, refAlleleFreq = 0.05, minTotalDepth = 60, maxTotalDepth = 140, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
-e_df <- filterSNPs(SNPset = e_df, refAlleleFreq = 0.05, minTotalDepth = 50, maxTotalDepth = 110, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
-f_df <- filterSNPs(SNPset = f_df, refAlleleFreq = 0.05, minTotalDepth = 60, maxTotalDepth = 130, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
-g_df <- filterSNPs(SNPset = g_df, refAlleleFreq = 0.05, minTotalDepth = 50, maxTotalDepth = 110, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
-h_df <- filterSNPs(SNPset = h_df, refAlleleFreq = 0.05, minTotalDepth = 20, maxTotalDepth = 90, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
-i_df <- filterSNPs(SNPset = i_df, refAlleleFreq = 0.05, minTotalDepth = 60, maxTotalDepth = 140, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
-j_df <- filterSNPs(SNPset = j_df, refAlleleFreq = 0.05, minTotalDepth = 40, maxTotalDepth = 100, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
+P1sp_bsa <- filterSNPs(SNPset = P1sp_bsa, refAlleleFreq = 0.05, minTotalDepth = 40, maxTotalDepth = 85, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
+P9sp_bsa <- filterSNPs(SNPset = P9sp_bsa, refAlleleFreq = 0.05, minTotalDepth = 40, maxTotalDepth = 130, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
+P2sp_bsa <- filterSNPs(SNPset = P2sp_bsa, refAlleleFreq = 0.05, minTotalDepth = 35, maxTotalDepth = 85, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
+P10sp_bsa <- filterSNPs(SNPset = P10sp_bsa, refAlleleFreq = 0.05, minTotalDepth = 40, maxTotalDepth = 90, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
+P11sp_bsa <- filterSNPs(SNPset = P11sp_bsa, refAlleleFreq = 0.05, minTotalDepth = 60, maxTotalDepth = 170, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
+P3sp_bsa <- filterSNPs(SNPset = P3sp_bsa, refAlleleFreq = 0.05, minTotalDepth = 20, maxTotalDepth = 85, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
+P12sp_bsa <- filterSNPs(SNPset = P12sp_bsa, refAlleleFreq = 0.05, minTotalDepth = 30, maxTotalDepth = 100, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
+P4sp_bsa <- filterSNPs(SNPset = P4sp_bsa, refAlleleFreq = 0.05, minTotalDepth = 40, maxTotalDepth = 150, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
+# Russell <- filterSNPs(SNPset = Russell, refAlleleFreq = 0.05, minTotalDepth = 10, maxTotalDepth = 90, depthDifference = 50, minSampleDepth = 10, minGQ = 50, verbose = TRUE)
+# a_df <- filterSNPs(SNPset = a_df, refAlleleFreq = 0.05, minTotalDepth = 60, maxTotalDepth = 120, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
+# b_df <- filterSNPs(SNPset = b_df, refAlleleFreq = 0.05, minTotalDepth = 50, maxTotalDepth = 120, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
+# c_df <- filterSNPs(SNPset = c_df, refAlleleFreq = 0.05, minTotalDepth = 50, maxTotalDepth = 110, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
+# d_df <- filterSNPs(SNPset = d_df, refAlleleFreq = 0.05, minTotalDepth = 60, maxTotalDepth = 140, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
+# e_df <- filterSNPs(SNPset = e_df, refAlleleFreq = 0.05, minTotalDepth = 50, maxTotalDepth = 110, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
+# f_df <- filterSNPs(SNPset = f_df, refAlleleFreq = 0.05, minTotalDepth = 60, maxTotalDepth = 130, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
+# g_df <- filterSNPs(SNPset = g_df, refAlleleFreq = 0.05, minTotalDepth = 50, maxTotalDepth = 110, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
+# h_df <- filterSNPs(SNPset = h_df, refAlleleFreq = 0.05, minTotalDepth = 20, maxTotalDepth = 90, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
+# i_df <- filterSNPs(SNPset = i_df, refAlleleFreq = 0.05, minTotalDepth = 60, maxTotalDepth = 140, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
+# j_df <- filterSNPs(SNPset = j_df, refAlleleFreq = 0.05, minTotalDepth = 40, maxTotalDepth = 100, depthDifference = 50, minSampleDepth = 10, minGQ = 100, verbose = TRUE)
 ```
 
 ```{r depth plot, include=TRUE, fig.show="hold", fig.width=3, fig.height=3, eval=FALSE}
@@ -191,6 +199,19 @@ ggsave(paste0(obj_names[i],"_plotgp.png"), plot = last_plot(), width = 35, heigh
 
 #ck0201_plotgp <- plotQTLStats(SNPset = ck0201_qtl, var = "negLog10Pval", plotThreshold = TRUE, q = 0.01)
 #ck0201_plotgp <- ck0201_plotgp + labs(title = "CK02_01") + theme(plot.title = element_text(size = 18, hjust = 0.5))
+```
+
+
+##store each BSA as a file by chromosome for later access.
+```{r store by chromosome to analysed_files}
+chrs <- c("chr1", "chr2", "chr3",  "chr4",  "chr5",  "chr6",  "chr7",  "chr8",  "chr9", "chr10", "chr11", "chr12", "chr13", "chr14", "chr15", "chr16", "chr17", "chr18", "chr19",  "chr20", "chr21", "chr22", "chr23", "chr24", "chr25", "chr26", "chr27", "chr28", "chr29")
+for(i in seq(along=obj_names)) {
+  for (ic in seq(along=chrs)){ 
+dt_name   <- as.data.table(get(obj_names[i], envir = .GlobalEnv))
+dt_name_single_chr <- dt_name[CHROM==chrs[ic],] #get the right name for CHR
+fwrite(dt_name_single_chr, file=paste0("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/analysed_files/",obj_names[i],"_", chrs[ic],".csv"))
+  }
+}
 ```
 
 ```{r Gprime ggplot qtls, eval=TRUE, warnings=FALSE, include=TRUE, fig.show="hold", fig.width= 20}
@@ -555,54 +576,69 @@ write.table(BSAregions[CHROM==chrs[i],], file=paste0("allBSAregions_", chrs[i], 
 
 ##male percentages from sorting bulks and working out contributions.
 ```{r male percentages}
+#library(ggpmisc)
+
 mp <- fread("male_percentage.txt")
+mp <-  mp[, qtl := str_replace_all(qtl, c("QTL"="QTL detected on chromosome 25"),c("no QTL"="no QTL detected on chromosome 25"))]
 mp1 <- mp[1:36,]
 p <- ggplot(data=mp1, aes(x=row, y=percent))+
 geom_point(aes(colour=factor(qtl),fill=factor(qtl), size=0.1))+#,alpha=5/10, , size=0.5,,shape=factor(threshold) position=position_dodge(width=1)
+geom_smooth(method=lm, se=FALSE)+#, level=0.99
   scale_colour_manual(values = c("tomato", "darkgreen"))+
   #geom_hline(yintercept = 20)+
   #geom_text(aes(0,20,label = "80% accuracy", vjust = -1, hjust = 0.1))+
-  scale_y_continuous(labels = function(x) paste0(x, "%"))+
-  labs(title =str_wrap("QTL detection using the top 0.5 % of Gprime values as a threshold",40))+
+  stat_poly_line() +                                #put line equation on graph
+  stat_poly_eq(aes(label = after_stat(eq.label))) + #put line equation on graph
+  stat_poly_eq(label.y = 0.9) +                     #put line equation on graph
+  scale_y_continuous(labels = function(x) paste0(x, "%"), breaks = seq(0, 80, by = 10))+
+  labs(title =str_wrap("QTL detection using the top 0.5 % of Gprime values as a threshold",100))+
   theme(plot.title =element_text(color = "grey20", size = 12, angle = 0, hjust = .5, vjust = 0, face = "plain"),
   legend.text    =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = .5, face = "plain"),
-  legend.title   =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = .5, face = "plain"),
-  legend.position="bottom",
+  #legend.title   =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = .5, face = "plain"),
+  legend.title   =element_blank(),
+  legend.position=c(0.5, -0.25),
+  plot.margin    = margin(0.5, 0.5, 2, 0.5, "cm"),
   axis.text.x    =element_text(color = "grey20", size = 12, angle = 0, hjust = .5, vjust = 0, face = "plain"),
   axis.text.y    =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = 0, face = "plain"),  
   axis.title.x   =element_text(color = "grey20", size = 12, angle = 0, hjust = .5, vjust = 0, face = "plain"),
-  axis.title.y   =element_text(color = "grey20", size = 12, angle = 90, hjust = .5, vjust = 0, face = "plain"))+
+  axis.title.y   =element_text(color = "grey20", size = 12, angle = 90, hjust = .5, vjust = 2, face = "plain"))+
   guides(size = "none")+
-  labs(colour=str_wrap("QTL detected on chromosome 25",200),fill=str_wrap("QTL detected on chromosome 25",200))+
+  #labs(colour=str_wrap("QTL detected on chromosome 25",200),fill=str_wrap("QTL detected on chromosome 25",200))+
   xlab("Bulk number")+
-  ylab(str_wrap("The expected difference in sex locus allele frequency between bulks",35))
-print(p)
+  ylab(str_wrap("The expected difference in sex locus allele frequency between bulk pairs",37))
+#print(p)
 
-ggsave("Perc_dif_between_bulks_top5.png", plot = p, width = 15, height = 10, units = c("cm"), dpi = 320)
+ggsave("Perc_dif_between_bulks_top5.png", plot = p, width = 15, height = 13, units = c("cm"), dpi = 320)
 
 mp2 <- mp[37:72,]
 p <- ggplot(data=mp2, aes(x=row, y=percent))+
 geom_point(aes(colour=factor(qtl),fill=factor(qtl), size=0.1))+#,alpha=5/10, na.rm=T, size=0.5, position=position_dodge(width=1)
+geom_smooth(method=lm, se=FALSE)+#, level=0.99
   scale_colour_manual(values = c("tomato", "darkgreen"))+
   #geom_hline(yintercept = 43)+
   #geom_text(aes(0,43,label = "80% accuracy", vjust = -1, hjust = 0.1))+
-  scale_y_continuous(labels = function(x) paste0(x, "%"))+
+  stat_poly_line() +                                  #put line equation on graph
+  stat_poly_eq(aes(label = after_stat(eq.label))) +   #put line equation on graph
+  stat_poly_eq(label.y = 0.9) +                       #put line equation on graph
+  scale_y_continuous(labels = function(x) paste0(x, "%"), breaks = seq(0, 80, by = 10))+
   labs(title="QTL detection using q=0.05 as a threshold")+
   theme(plot.title =element_text(color = "grey20", size = 12, angle = 0, hjust = .5, vjust = 0, face = "plain"),
   legend.text    =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = .5, face = "plain"),
-  legend.title   =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = .5, face = "plain"),
-  legend.position="bottom",
+  #legend.title   =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = .5, face = "plain"),
+  legend.title   =element_blank(),
+  legend.position=c(0.5, -0.25),
+  plot.margin    = margin(0.5, 0.5, 2, 0.5, "cm"),
   axis.text.x    =element_text(color = "grey20", size = 12, angle = 0, hjust = .5, vjust = 0, face = "plain"),
   axis.text.y    =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = 0, face = "plain"),  
   axis.title.x   =element_text(color = "grey20", size = 12, angle = 0, hjust = .5, vjust = 0, face = "plain"),
-  axis.title.y   =element_text(color = "grey20", size = 12, angle = 90, hjust = .5, vjust = 0, face = "plain"))+
-  guides(size = "none")+
-  labs(colour=str_wrap("QTL detected on chromosome 25",200),fill=str_wrap("QTL detected on chromosome 25",200) )+
+  axis.title.y   =element_text(color = "grey20", size = 12, angle = 90, hjust = .5, vjust = 2, face = "plain"))+
+  guides(size = "none", color=guide_legend(override.aes=list(fill=NA)))+
+  #labs(colour=str_wrap("QTL detected on chromosome 25",200),fill=str_wrap("QTL detected on chromosome 25",200) )+
   xlab("Bulk number")+
-  ylab(str_wrap("The expected difference in sex locus allele frequency between bulks",35))
-print(p)
+  ylab(str_wrap("The expected difference in sex locus allele frequency between bulk pairs",37))
+#print(p)
 
-ggsave("Perc_dif_between_bulks_p05.png", plot = p, width = 15, height = 10, units = c("cm"), dpi = 320)
+ggsave("Perc_dif_between_bulks_p05.png", plot = p, width = 15, height = 13, units = c("cm"), dpi = 320)
 
 ```
 
