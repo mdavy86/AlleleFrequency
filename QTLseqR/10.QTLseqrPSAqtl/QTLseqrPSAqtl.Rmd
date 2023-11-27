@@ -2,11 +2,12 @@
 title: "QTLseqrPSAQTL"
 author: "Casey Flay"
 date: "07/10/2021"
-output: html_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, include=FALSE, fig.width=12, fig.height=8, fig.path='Figs/')
+
 library(RLinuxModules)
 library(glue)
 library(here)
@@ -17,33 +18,46 @@ library(magrittr)
 library(GenomicRanges)
 library(IRanges)
 library(RColorBrewer)
+library(testthat)
+
+rm(list=ls())
+
+DEBUG <- FALSE
+N     <- 20000
+
+verify <- function(x,y) {
+  expect_equal(x,y)
+}
+
 setDTthreads(1)
 module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 vcftools")
 ```
 
 ```{r data from individual qtl by parentpool}
-vcf_files_1 <-grep(pattern="vcf.gz$", list.files(path="/powerplant/output/genomic/plant/Actinidia/chinensis/Resequencing/Variants/Russell_V2a.chromosomes.and.unassigned/ER10522", full.names=T), invert=F, value=T)
-vcf_files_2 <- grep(pattern="vcf.gz$", list.files(path="/powerplant/output/genomic/plant/Actinidia/chinensis/Resequencing/Variants/Russell_V2a.chromosomes.and.unassigned/ER10400_and_SRA", full.names=T), invert=F, value=T)
+vcf_files_1 <- list.files(path="/powerplant/output/genomic/plant/Actinidia/chinensis/Resequencing/Variants/Russell_V2a.chromosomes.and.unassigned/ER10522", pattern="vcf.gz$", full.names=TRUE)
+
+vcf_files_2 <- list.files(path="/powerplant/output/genomic/plant/Actinidia/chinensis/Resequencing/Variants/Russell_V2a.chromosomes.and.unassigned/ER10400_and_SRA", pattern="vcf.gz$", full.names=TRUE)
 vcf_files <- c(vcf_files_1,vcf_files_2)
 vcf_names <- c("vcf_1","vcf_2")
 
-BSAallsnps          <- fread(paste0(here('QTLseqR/'), "BSA0.5snps.csv"))#or BSA0.05snps.csv
+BSAallsnps          <- fread(file.path(here('QTLseqR'), "BSA0.5snps.csv"), nrows=ifelse(DEBUG, 10000, Inf))  # or BSA0.05snps.csv
 BSAallsnps          <- BSAallsnps[, "ChrPos" :=  paste(str_replace_all(CHROM, "chr",""), POS, sep=".")]
 BSAallsnps          <- BSAallsnps[, "poolparent_chrpos" :=  paste(str_replace_all(parent, "_bsa",""),CHROM, POS, sep=".")]
 BSAallsnps          <- BSAallsnps[order(ChrPos),]
 BSAallsnps_ppChrPos <- BSAallsnps[,poolparent_chrpos]
 BSAallsnps_ALT      <- BSAallsnps[,ALT]
 
-#just get those with a window of 5000 snps either side of the peak.
-list_chrbeds_parent  <- grep(pattern="BSAregions_G5000_", list.files(path=here("QTLseqR"), full.names=T), invert=F, value=T)
+## Just get those with a window of 5000 snps either side of the peak.
+list_chrbeds_parent  <- list.files(path=here("QTLseqR"), pattern="BSAregions_G5000_", full.names=TRUE)
 names_chrbeds_parent <- str_replace_all(list_chrbeds_parent, c("/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/BSAregions_"="", "_bsa.bed"="", "G5000_"=""))
 
-BSAallsnps_fromvcf<- data.table("SAMPLE"=character(), "CHROM"=numeric(), "POS"=numeric(), "REF"=character(), "ALT0"=character(), "ALT1"=character(), "ALT2"=character(), "AD"=character(), "AD0"=numeric(), "AD1"=numeric(), "poolparent"=character(), "poolparent_chrpos"=character())
+BSAallsnps_fromvcf <- data.table("SAMPLE"=character(), "CHROM"=numeric(), "POS"=numeric(), "REF"=character(), "ALT0"=character(), "ALT1"=character(), "ALT2"=character(), "AD"=character(), "AD0"=numeric(), "AD1"=numeric(), "poolparent"=character(), "poolparent_chrpos"=character())
 
-#for each pool parent pull data from vcf files to a single data table.
+## for each pool parent pull data from vcf files to a single data table.
 for (b in seq(along=list_chrbeds_parent)){
   for (x in seq(along=vcf_files)){
-  BSAallsnps_fromvcf_tmp <- fread(cmd=paste("bcftools query  -f'[%SAMPLE \t%CHROM \t%POS \t%REF \t%ALT{0} \t%ALT{1} \t%ALT{2} \t%AD \t%AD{0} \t%AD{1} \n]'",paste0("-R '",list_chrbeds_parent[b],"'"), vcf_files[x]), fill=F)
+    cat(b, x, "\n")
+  BSAallsnps_fromvcf_tmp <- fread(cmd=paste("bcftools query  -f'[%SAMPLE \t%CHROM \t%POS \t%REF \t%ALT{0} \t%ALT{1} \t%ALT{2} \t%AD \t%AD{0} \t%AD{1} \n]'",paste0("-R '",list_chrbeds_parent[b],"'"), vcf_files[x]), fill=FALSE, nrows=ifelse(DEBUG, N, Inf))
   #retrieve just SNP sites below
   BSAallsnps_fromvcf_tmp <- BSAallsnps_fromvcf_tmp[paste(str_replace_all(V2, "chr",""), V3, sep=".") %in% na.omit(BSAallsnps$ChrPos),]
   BSAallsnps_fromvcf_tmp <- BSAallsnps_fromvcf_tmp[, "poolparent" := names_chrbeds_parent[b]] 
@@ -51,7 +65,11 @@ for (b in seq(along=list_chrbeds_parent)){
   BSAallsnps_fromvcf     <- rbind(BSAallsnps_fromvcf_tmp, BSAallsnps_fromvcf, use.names=FALSE)
   }
 }
-BSAallsnps_fromvcf <- setnames(BSAallsnps_fromvcf, c("V1","V2","V3","V4","V5","V6","V7","V8","V9","V10","poolparent", "poolparent_chrpos"), c("SAMPLE","CHROM", "POS", "REF", "ALT0", "ALT1", "ALT2","AD", "AD0", "AD1", "poolparent","poolparent_chrpos"))
+newnames <- c("SAMPLE","CHROM", "POS", "REF", "ALT0", "ALT1", "ALT2","AD", "AD0", "AD1", "poolparent","poolparent_chrpos")
+BSAallsnps_fromvcf <- setnames(BSAallsnps_fromvcf,
+                               c(paste0("V", 1:10),"poolparent", "poolparent_chrpos"),
+                               newnames
+                               )
 
 BSAallsnps_fromvcf  <- BSAallsnps_fromvcf[, "ChrPos" :=  paste(str_replace_all(CHROM, "chr",""), POS, sep=".")]
 
@@ -67,8 +85,9 @@ fwrite(BSAallsnps_fromvcf, file = "g5000_BSAgSNPs.csv")
 
 #takes a while to run: search for each ChrPos in BSAallsnps_fromvcf and apply the alternate to the data.table. 
 BSAallsnps_fromvcf_wALT   <- data.table("SAMPLE"=character(), "CHROM"=numeric(), "POS"=numeric(), "REF"=character(), "ALT0"=character(), "ALT1"=character(), "ALT2"=character(), "AD"=character(), "AD0"=numeric(), "AD1"=numeric(), "ChrPos"=numeric(), "bsaqtl_alt"=character(), "poolparent"=character(),"poolparent_chrpos"=character())
+
 for (cp in seq(along=BSAallsnps_ppChrPos)){
-BSAallsnps_fromvcf_wALT   <- BSAallsnps_fromvcf[poolparent_chrpos==BSAallsnps_ppChrPos[cp], "bsaqtl_alt" := BSAallsnps_ALT[cp]]
+  BSAallsnps_fromvcf_wALT   <- BSAallsnps_fromvcf[poolparent_chrpos==BSAallsnps_ppChrPos[cp], "bsaqtl_alt" := BSAallsnps_ALT[cp]]
 }
 BSAallsnps_fromvcf_wALT  <- BSAallsnps_fromvcf_wALT[str_length(REF)==1,] #take out long reference allele strings
 
