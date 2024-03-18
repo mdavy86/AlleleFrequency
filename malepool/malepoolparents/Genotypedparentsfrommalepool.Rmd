@@ -104,7 +104,7 @@ submit_bwa(rg_id      = paste(x1$pedigree_item, seq_along(rg_sample), sep = "_")
            rg_sample  = paste(x1$rg_id, x1$pedigree_item, x1$sampleid_github, sep = "_"),
            pair1      = x1$read1,
            pair2      = x1$read2,
-           output_dir = "/workspace/hrtcdf/FSTs/malepool/malepoolparents",
+           output_dir = "/workspace/hrtcdf/github/FSTs/malepool/malepoolparents",
            job.init   = "asub",
            job.opts   = "-q normal -R rusage[tmp=2000]",   
            stem       = file.path(output_dir, paste(x1$sampleid_github, x1$pedigree_item, sep="or")))
@@ -118,12 +118,13 @@ x2 <- x2[, pile:="pile"]
 x2 <- x2[, or:="or"]
 x2 <- x2[, .bam:=".bam"]
 x2 <- x2[, .vcf:=".vcf"]
+x2 <- x2[, Dir:="/powerplant/workspace/hrtcdf/github/FSTs/malepool/malepoolparents/"]
 x2
 ```
 
 ## index so -r chr25 can be called in mpileup. 
 ```{r}
-bamfiles       <- dir( pattern = "*.bam$", full.names = FALSE, include.dirs = TRUE)
+bamfiles       <- dir( pattern = "mergeCK", full.names = FALSE, include.dirs = TRUE)
 output         <- paste(bamfiles, ".bai", sep="") 
 samtools_index <- glue("samtools index {bamfiles} {output} -c")
 logDir         <- file.path(logDir)
@@ -162,9 +163,24 @@ submit_mpileup(reference = reference, output = output, bamfiles = bamfiles)
 ```
 
 ```{r }
+vcfcmd      <- "bcftools view -r 'chr25' '/powerplant/workspace/hrtcdf/github/FSTs/malepool/malepoolparents/pileK97_03_05_07borCK06_01.vcf' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
+CK06_01 <- fread(cmd=vcfcmd, col.names = c('SAMPLEck06','POS','REFck06','ALTck06','DPck06','ADck06','AD0ck06','AD1ck06','AD2ck06','AD3ck06'), key = 'POS')
 
-vcfcmd      <- "bcftools view -r 'chr25' '/powerplant/workspace/hrtcdf/github/FSTs/malepool/malepoolparents/pileK97_03_05_07borCK06_01.bam' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
+vcfcmd      <- "bcftools view -r 'chr25' '/powerplant/workspace/hrtcdf/github/FSTs/malepool/malepoolparents/pileK97_03_07_13aorCK51_06.vcf' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
+CK51_06 <- fread(cmd=vcfcmd, col.names = c('SAMPLEck51','POS','REFck51','ALTck51','DPck51','ADck51','AD0ck51','AD1ck51','AD2ck51','AD3ck51'), key = 'POS')
 
-DTRu2a_alts <- fread(cmd=vcfcmd, col.names = c('rSAMPLE','POS','rREF','rALT','rDP','rAD','rAD0','rAD1','rAD2','rAD3'), key = 'POS')
+vcfcmd      <- "bcftools view -r 'chr25' '/powerplant/workspace/hrtcdf/github/FSTs/malepool/malepoolparents/pileK99_03_06_18borCK20_01.vcf' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
+CK20_01 <- fread(cmd=vcfcmd, col.names = c('SAMPLEck20','POS','REFck20','ALTck20','DPck20','ADck20','AD0ck20','AD1ck20','AD2ck20','AD3ck20'), key = 'POS')
+```
+
+```{r merge latania tolerant pedigree pool table with 2xbait table.}
+#testing whether the homozygotes from ref helps
+DTpt  <- merge.data.table(CK06_01, CK51_06, all=TRUE,  by ='POS')
+DTpt  <- merge.data.table(DTpt, CK20_01, all=TRUE,  by ='POS')
+rm(CK06_01, CK51_06, CK20_01)
+
+DTpt  <- DTpt[DPck06!=ADck06 | DPck51!=ADck06 | DPck06!=ADck06]
+
+#DTptfixNA <- DTpt[!is.na(SAMPLEck06) & is.na(SAMPLEck51), `:=` (REFck51 = REFck06, ALTck51 = ALTck06, DPck51 = DPck06, ADck51 = ADck06, AD0ck51 = AD0ck06, AD1ck51 = AD1ck06, AD2ck51 = AD2ck06, AD3ck51 = AD3ck06)]
 
 ```

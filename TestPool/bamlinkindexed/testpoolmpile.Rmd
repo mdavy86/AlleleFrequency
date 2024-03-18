@@ -15,11 +15,11 @@ library(tidyverse)
 library(stringr)
 library(ggplot2)
 library(magrittr)
-module("load openlava asub bwa/0.7.12 samtools/1.9 bcftools/1.10.2 vcftools")
+module("load openlava asub bwa/0.7.12 samtools/0.1.18 bcftools/1.10.2 vcftools")
 ```
 
 ```{r}
-mainDir <- "/powerplant/workspace/hrtcdf/FSTs/"
+mainDir <- "/powerplant/workspace/hrtcdf/github/FSTs/"
 subDir <- "bamlink"
 royDir <- "/workspace/hrards/projects/hrtcdf/10.alignments/bwa"
 outDir <- str_c(mainDir, subDir, sep = "", collapse = TRUE)
@@ -31,38 +31,24 @@ if (dir.exists(mainDir)){
     dir.create(file.path(mainDir, subDir))
     setwd(file.path(mainDir, subDir))
 }
-
 tpoolfiles <- dir(royDir, pattern = "^HL55WDRXX", full.names = TRUE, include.dirs = TRUE)
-
 file.symlink (tpoolfiles, outDir)
-## we don't need the full pathname into the symlink file.
 ```
 
 ```{r transform filenames to sample, lane and suffix for data.table from link}
-#setwd("/powerplant/workspace/hrtcdf/FSTs/TestPool/bamlinkindexed")
-wd <- ("/powerplant/workspace/hrtcdf/FSTs/TestPool/bamlinkindexed/")
-wd
-pattern <- c(".bai", "log", ".tsv", ".txt", ".Rmd")
-f <- grep(paste(pattern, collapse = "|"), list.files(path="."),  invert=TRUE, value=TRUE)
-f
-str1 <- str_replace(f, "XX_" , "XX_&")
-str2 <- str_replace(str1, "_L" , "&_L")
-str3 <- str_replace(str2, ".bam" , "&.bam&")
-str3 
-lindts <- {data.table(str3) %>%
-  separate(str3, into = c("HL55", "sample", "lane", "bam", "version"), sep = "&", fill = "left") %>%
-  mutate("version" = str_extract(sample, regex("/")))
-}
-lindts
-
-colnames(lindts) <- c("HL55", "sample", "lane", "bam", "version" )
-#write.table(lindts, 'linkpool.tsv')
+lindts <- as.data.table(grep(paste(".bam$", collapse = "|"), list.files(path="."), invert=FALSE, value=TRUE))
+lindts <- lindts[, V2 := str_replace_all(V1, "_L" , "&_L")
+               ][, V2 := str_replace_all(V2, "XX_" , "XX_&")
+               ][, V2 := str_replace_all(V2, ".bam" , "&.bam&")
+               ][, c("HL55", "sample", "lane", "bam") := tstrsplit(V2, "&", fixed=TRUE)
+               ][, V2:=NULL]
+fwrite(lindts, 'linkpool.tsv', append=FALSE)
 ```
 
 ```{bash index.bai}
 t=8
 #inDir="/powerplant/workspace/hrtcdf/FSTs/TestPool/bamlinkindexed"
-logDir="/powerplant/workspace/hrtcdf/FSTs/TestPool/bamlinkindexed/logDir"
+logDir="/powerplant/workspace/hrtcdf/github/FSTs/TestPool/bamlinkindexed/logDir"
 if  [ ! -d  "logDir" ]; then mkdir "logDir" ; fi
 
 for vcf in $(ls *.bam); do
@@ -80,30 +66,26 @@ done
 ##Write each sample name individually and run. a loop with $sample has 2 copies of sample name so dont loop, also individuals can fail and need to be run seperately.
 
 ```{r}
-#cd "/"
-t <- 9
 bamfiles      <- paste(lindts$HL55, lindts$sample, lindts$lane, lindts$bam, sep = "")
 #bamfiles
 #file.exists (bamfiles)
 L001 <- str_subset(bamfiles, "L001")
 L002 <- str_subset(bamfiles, "L002")
-lanemerge <- str_c(L001, L002, sep = " ", collapse = NULL)
-#lanemerge
+lanemerge <- str_c(L001, L002, sep = " ", collapse = NULL)#lanemerge
 
 merge_output  <- paste(unique(lindts$sample), ".bam.gz", sep = "")
 samtools_merge <- glue("samtools merge {merge_output} {lanemerge}")
-#samtools_merge
 tmpfile <- tempfile()
 writeLines(samtools_merge,con = tmpfile)
 readLines(tmpfile)
-asub_cmd <- glue("asub -n {t} -q normal {tmpfile}")
+asub_cmd <- glue("asub -n {9} -q normal {tmpfile}")
 system(asub_cmd)
 ```
 
 ## use samtools for indexing normal?, tabix and stats.
 ```{bash}
 t=9
-logDir="/powerplant/workspace/hrtcdf/FSTs/TestPool/bamlinkindexed/logDir"
+logDir="/powerplant/workspace/hrtcdf/github/FSTs/TestPool/bamlinkindexed/logDir"
 if  [ ! -d  "logDir" ]; then mkdir "logDir" ; fi
 
 for vcf in $(ls CK02_01.bam.gz ); do
@@ -113,87 +95,289 @@ bsub -n $t -o $logDir/$vcf.log -e $logDir/$vcf.err "samtools index $vcf"
 #echo c${vcf}
 done
 ```
-```{r transform filenames to sample, lane and suffix for data.table from link}
-pattern <- c(".bam.gz") #(".bai", "log", ".tsv", ".txt", ".err", ".out", ".sh", ".Rmd")
-f <- grep(paste(pattern, collapse = "|"), list.files(path="."),  invert=FALSE, value=TRUE)
-#f
-str1 <- str_replace(f, ".bam.gz" , "&.bam.gz&")
-str1
-lindts <- {data.table(str1) %>%
-  separate(str1, into = c("sample", "bam", "version"), sep = "&", fill = "left") %>%
-  mutate("version" = str_extract(sample, regex("/")))
-}
-lindts
 
-colnames(lindts) <- c("sample", "bam", "version" )
-#write.table(lindts, 'linkpool.tsv')
+```{r transform filenames to sample, lane and suffix for data.table from link}
+lindts <- as.data.table(grep(paste(".bam.gz$", collapse = "|"), list.files(path="."), invert=FALSE, value=TRUE))
+lindts <- lindts[, V2 := str_replace_all(V1, ".bam" , "&.bam&")]
+lindts <- lindts[, c("sample", "bam", "version") := tstrsplit(V2, "&", fixed=TRUE)][,V2:=NULL]
+fwrite(lindts, 'linkpool.tsv', append=FALSE)
+```
+
+```{r run samtools mpileup for chr25 using samtools/0.1.18. since popoolation2 requires that version }
+submit_mpileup <- function(reference = "*.fa.gz", output = c(), bamfiles = c(), job.init = "asub", job.opts = "-q normal") {
+  cmd          <- "samtools mpileup -r 'chr25' -f {reference} {bamfiles} > {out}" 
+  tmpf         <- tempfile(pattern = "submit_mileup.", fileext = ".sh")
+  writeLines(text = c(glue(cmd)), con = tmpf)
+  submit       <- "{job.init} {job.opts} {tmpf}"
+  system(glue(submit), intern = TRUE)
+}
+
+bamfiles <- paste(lindts$sample, lindts$bam, lindts$version, sep = "")
+file.exists(bamfiles)
+out   <- paste(lindts$sample, "samtoolsmpile_chr25.vcf.gz", sep = "_")
+reference   <- dir("/workspace/hrards/projects/hrtcdf/genome/fasta", pattern = ".*\\.gz$", full.names = TRUE)
+file.exists(reference)
+submit_mpileup(reference = reference, output = out, bamfiles = bamfiles)
 ```
 
 ```{r run-mileup}
 submit_mpileup <- function(reference = "*.fa.gz", output = c(), bamfiles = c(), job.init = "asub", job.opts = "-q normal") {
-  cmd <- "bcftools mpileup -B -Q 0 -f {reference} -a {mpileuptags} {bamfiles} -Ou | bcftools call -f {bcfcalltags} -p {pvalThres} -m -A -Oz -o {output}"
+  cmd <- "bcftools mpileup -I -B -Q 0 -f {reference} -r chr25 -a {mpileuptags} {bamfiles} -Ou | bcftools call -f {bcfcalltags} -p {pvalThres} -m -A -Oz -o {output}"
   tmpf <- tempfile(pattern = "submit_mileup.", fileext = ".sh")
   writeLines(text = c(glue(cmd)), con = tmpf)
   submit <- "{job.init} {job.opts} {tmpf}"
   system(glue(submit), intern = TRUE)
 }
-mpileuptags <- "DP,AD,ADF,ADR,SP,INFO/AD,INFO/ADF,INFO/ADR"
+mpileuptags <- "DP,AD,INFO/AD"
 bcfcalltags <- "GQ,GP"
   pvalThres <- 0.99
 
-bamfiles <- paste(lindts$sample, lindts$bam, sep = "")
-#bamfiles
-sample2   <- paste(lindts$sample, "piled.vcf.gz", sep = "_")
+bamfiles <- paste(lindts$sample, lindts$bam, lindts$version, sep = "")
+bamfiles
+sample2   <- paste(lindts$sample, "chr25piled.vcf.gz", sep = "_")
 reference <- dir("/workspace/hrards/projects/hrtcdf/genome/fasta", pattern = ".*\\.gz$", full.names = TRUE)
 #reference
 
-#file.exists(bamfiles)
-#file.exists(reference)
+file.exists(bamfiles)
+file.exists(reference)
 
 submit_mpileup(reference = reference, output = sample2, bamfiles = bamfiles)
 ```
 
-```{bash}
-#vcftools manual - Output allele frequency for all sites in the input vcf file from chromosome 1
-logDir="/powerplant/workspace/hrtcdf/FSTs/TestPool/bamlinkindexed/logDir"
+```{r data from vcfs to data table}
+#ALT{0} retrieves the first alternate allele while AD{0} retrieves the depth for the reference with AD{1} the depth for the first alternate. column names adjusted to make ALT1 the same as AD1.
+tp1  <- "bcftools view  'CKRussell_chr25piled.vcf.gz' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%ALT{0}\t%ALT{1}\t%ALT{2}\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
+t1 <- fread(cmd=tp1, col.names = c('t1SAMPLE','POS','t1REF','t1ALT','t1ALT1','t1ALT2','t1ALT3','t1DP','t1AD','t1REFD','t1AD1','t1AD2','t1AD3'), key = 'POS')
+test1 <- t1[POS %between% c(1000000, 1010000),]
+tp2  <- "bcftools view  'CK22_03_chr25piled.vcf.gz' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%ALT{0}\t%ALT{1}\t%ALT{2}\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
+t2 <- fread(cmd=tp2, col.names = c('t2SAMPLE','POS','t2REF','t2ALT','t2ALT1','t2ALT2','t2ALT3','t2DP','t2AD','t2REFD','t2AD1','t2AD2','t2AD3'), key = 'POS')
+test2 <- t2[POS %between% c(1000000, 1010000),]
+tp3  <- "bcftools view  'CK51_09_chr25piled.vcf.gz' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%ALT{0}\t%ALT{1}\t%ALT{2}\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
+t3 <- fread(cmd=tp3, col.names = c('t3SAMPLE','POS','t3REF','t3ALT','t3ALT1','t3ALT2','t3ALT3','t3DP','t3AD','t3REFD','t3AD1','t3AD2','t3AD3'), key = 'POS')
+test3 <- t3[POS %between% c(1000000, 1010000),]
+tp4  <- "bcftools view  'CK51_01_chr25piled.vcf.gz' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%ALT{0}\t%ALT{1}\t%ALT{2}\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
+t4 <- fread(cmd=tp4, col.names = c('t4SAMPLE','POS','t4REF','t4ALT','t4ALT1','t4ALT2','t4ALT3','t4DP','t4AD','t4REFD','t4AD1','t4AD2','t4AD3'), key = 'POS')
 
-for vcf in $(ls CK02_01_chr25.bcf.gz); do
-bsub -n 9 -o $logDir/$vcf.log -e $logDir/$vcf.err "vcftools --gzvcf $vcf --freq --out ${vcf}"
+tp5  <- "bcftools view  'CK20_01_chr25piled.vcf.gz' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%ALT{0}\t%ALT{1}\t%ALT{2}\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
+t5 <- fread(cmd=tp5, col.names = c('t5SAMPLE','POS','t5REF','t5ALT','t5ALT1','t5ALT2','t5ALT3','t5DP','t5AD','t5REFD','t5AD1','t5AD2','t5AD3'), key = 'POS')
 
-done
-```
-uCK02_01_chr25.bcf.gz
+tp6  <- "bcftools view  'CK02_01_chr25piled.vcf.gz' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%ALT{0}\t%ALT{1}\t%ALT{2}\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
+t6 <- fread(cmd=tp6, col.names = c('t6SAMPLE','POS','t6REF','t6ALT','t6ALT1','t6ALT2','t6ALT3','t6DP','t6AD','t6REFD','t6AD1','t6AD2','t6AD3'), key = 'POS')
 
-##https://github.com/caseyflay/HighHealth/blob/master/QTLSeqr/CheckAlleleFreqs.Rmd
-##Calculate AF over all pools on CHR1 
-##zcat CKRussell_piled.vcf.gz | head -n 100
-##CHROM  POS     ID      REF     ALT     QUAL    FILTER  INFO    FORMAT  D6
-##chr1    1       .       C       .       63      .       DP=1;ADF=1;ADR=0;AD=1;MQ0F=0;AN=2;DP4=1,0,0,0;MQ=33     GT:DP:SP:ADF:ADR:AD     0/0:1:0:1:0:1
+tp7  <- "bcftools view  'CK19_03_chr25piled.vcf.gz' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%ALT{0}\t%ALT{1}\t%ALT{2}\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
+t7 <- fread(cmd=tp7, col.names = c('t7SAMPLE','POS','t7REF','t7ALT','t7ALT1','t7ALT2','t7ALT3','t7DP','t7AD','t7REFD','t7AD1','t7AD2','t7AD3'), key = 'POS')
 
-```{r}
-#piledvcf <- paste(lindts$sample, "piled.vcf.gz", sep = "_")
-file.exists("CK02_01.bam.gz")
-bcfcmd <- "bcftools query -f '%CHROM\t%POS\n' CK10_02_piled.vcf.gz | awk '{print $1,$2}'"
-DT <- fread(cmd=bcfcmd,col.names = c('CHR','POS'))
-```
+tp8  <- "bcftools view  'CK10_02_chr25piled.vcf.gz' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%ALT{0}\t%ALT{1}\t%ALT{2}\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
+t8 <- fread(cmd=tp8, col.names = c('t8SAMPLE','POS','t8REF','t8ALT','t8ALT1','t8ALT2','t8ALT3','t8DP','t8AD','t8REFD','t8AD1','t8AD2','t8AD3'), key = 'POS')
 
+tp9  <- "bcftools view  'CK23_08_chr25piled.vcf.gz' -Ou | bcftools query  -f'[%SAMPLE]\t%POS\t%REF\t%ALT\t%ALT{0}\t%ALT{1}\t%ALT{2}\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\t%AD{3}\n'"
+t9 <- fread(cmd=tp9, col.names = c('t9SAMPLE','POS','t9REF','t9ALT','t9ALT1','t9ALT2','t9ALT3','t9DP','t9AD','t9REFD','t9AD1','t9AD2','t9AD3'), key = 'POS')
 
-```{r message=FALSE, warning=FALSE}
-DT[,qplot(AF)]
-```
+tp <- t1[t2,][t3,][t4,][t5,][t6,][t7,][t8,][t9,]
+rm(t1,t2,t3,t4,t5,t6,t7,t8,t9)
 
-```{bash}
-#grep "AF" CK02_01_chr25.bcf.gz
-#grep --help
-#awk CK02_01_chr25.bcf.gz $1 | $2 'chr25:1737600'
-##get header from .gz references: zcat Russell_V2a.fa.gz | grep '>' | less
-#view .gz vcf files zcat CK02_01_chr25.bcf.gz | head -n 30
-
-#zcat CK02_01_chr25.bcf.gz | grep -v "386373" | cut -f1,2,3,4,5,6,7,8,9,10 | head -n 30
-
-#zcat CK02_01_chr25.bcf.gz | awk -v "AD" | cut -f1,2,3,4,5,6,7,8,9,10 | head -n 30
+fwrite(tp, file="testpool_dt.csv", append=FALSE)
+#rm(tp)
 ```
 
+```{r data cleanup and normalisation}
+#samples with lat SNPs in the tolerant pool which weren't in the susceptible pool 
+#large data file that needs time to run and environment cleared after running.
+tp <- fread("/powerplant/workspace/hrtcdf/github/FSTs/TestPool/bamlinkindexed/testpool_dt.csv")
+test1 <- tp[POS %between% c(1000000, 1010000),]
+
+#remove homozygous reference sites
+tp  <- tp[t1AD1>0][t2AD1>0][t3AD1>0][t4AD1>0][t5AD1>0][t6AD1>0][t7AD1>0][t8AD1>0][t9AD1>0]
+
+#include only those with sequence present in all genomes
+tp  <- tp[!is.na(t1SAMPLE)][!is.na(t2SAMPLE)][!is.na(t3SAMPLE)][!is.na(t4SAMPLE)][!is.na(t5SAMPLE)][!is.na(t6SAMPLE)][!is.na(t7SAMPLE)][!is.na(t8SAMPLE)][!is.na(t9SAMPLE)]
+
+#tolmatrix <- tolmatrix[, lapply(.SD, gsub, pattern = ("^\\.*$"), replacement = "n"), .SDcols = colnames(tolmatrix)]#change"." to n so it can be read easier over all columns. this also changes some depth to character. its refined below using the depth and non depth columns seperately. and binding back to a single datatable.
+tp                <- tp[, lapply(.SD, gsub, pattern = ("a"), replacement = "A"), .SDcols = colnames(tp)
+                      ][, lapply(.SD, gsub, pattern = ("t"), replacement = "T"), .SDcols = colnames(tp)
+                      ][, lapply(.SD, gsub, pattern = ("c"), replacement = "C"), .SDcols = colnames(tp)
+                      ][, lapply(.SD, gsub, pattern = ("g"), replacement = "G"), .SDcols = colnames(tp)]# change "a to A, t to T, c to C, and g to G in columns without "D" those that dont have numeric depth can be read easier.
+
+
+tp_alt <- tp[, lapply(.SD, gsub, pattern = ("^\\.*$"), replacement = "n"), .SDcols = (colnames(tp)[!grepl("D", colnames(tp))])]#change"." to n so columns without "D" those that dont have numeric depth can be read easier.
+
+tp_depth <- tp[, lapply(.SD, gsub, pattern = ("^\\.*$"), replacement = "0"), .SDcols = (colnames(tp)[grepl("D", colnames(tp))])]#change"." to n so numeric columns with "D" can be read easier.
+
+#Bind back to single data table
+tp2 <- cbind(tp_alt,tp_depth)
+
+fwrite(tp2, file="tp2.csv", append=FALSE)
+rm(tp, tp_alt, tp_depth)
+```
+
+```{r calculating alternate allele features}
+tp2 <- fread("/powerplant/workspace/hrtcdf/github/lataniaAlleles/latpool/tp2.csv")
+
+#clean up low depth reads and recode to 0 or "n"
+tp2 <-  tp2 [t1AD1 < 2 & AltSNPsSameAsCK01!=1, `:=` (t1ALT1 ="n", t1AD1="0")
+           ][t1AD2 < 2 & AltSNPsSameAsCK01!=1, `:=` (t1ALT2 ="n", t1AD2="0") 
+           ][t1AD3 < 2 & AltSNPsSameAsCK01!=1, `:=` (t1ALT3 ="n", t1AD3="0")                  
+           ][t1AD == t1REFD, `:=` (t1AD1="0", t1AD2="0", t1AD3="0")
+           ][t2AD1 < 2 & AltSNPsSameAsCK01!=1, `:=` (t2ALT1 ="n", t2AD1="0")
+           ][t2AD2 < 2 & AltSNPsSameAsCK01!=1, `:=` (t2ALT2 ="n", t2AD2="0")
+           ][t2AD3 < 2 & AltSNPsSameAsCK01!=1, `:=` (t2ALT3 ="n", t2AD3="0")
+           ][t2AD == t2REt3D, `:=` (t2AD1="0", t2AD2="0", t2AD3="0")
+           ][t3AD1 < 2 & AltSNPsSameAsCK01!=1, `:=` (t3ALT1 ="n", t3AD1="0")
+           ][t3AD2 < 2 & AltSNPsSameAsCK01!=1, `:=` (t3ALT2 ="n", t3AD2="0")
+           ][t3AD3 < 2 & AltSNPsSameAsCK01!=1, `:=` (t3ALT3 ="n", t3AD3="0")
+           ][t3AD == t3REFD, `:=` (t3AD1="0", t3AD2="0", t3AD3="0")
+           ][t4AD1 < 2 & AltSNPsSameAsCK01!=1, `:=` (t4ALT1 ="n", t4AD1="0")
+           ][t4AD2 < 2 & AltSNPsSameAsCK01!=1, `:=` (t4ALT2 ="n", t4AD2="0")
+           ][t4AD3 < 2 & AltSNPsSameAsCK01!=1, `:=` (t4ALT3 ="n", t4AD3="0")
+           ][t4AD == t4REFD, `:=` (t4AD1="0", t4AD2="0", t4AD3="0")
+           ][t5AD1 < 2 & AltSNPsSameAsCK01!=1, `:=` (t5ALT1 ="n", t5AD1="0")
+           ][t5AD2 < 2 & AltSNPsSameAsCK01!=1, `:=` (t5ALT2 ="n", t5AD2="0")
+           ][t5AD3 < 2 & AltSNPsSameAsCK01!=1, `:=` (t5ALT3 ="n", t5AD3="0")
+           ][t5AD == t5REFD, `:=` (t5AD1="0", t5AD2="0", t5AD3="0")
+           ][t6AD1 < 2 & AltSNPsSameAsCK01!=1, `:=` (t6ALT1 ="n", t6AD1="0")
+           ][t6AD2 < 2 & AltSNPsSameAsCK01!=1, `:=` (t6ALT2 ="n", t6AD2="0")
+           ][t6AD3 < 2 & AltSNPsSameAsCK01!=1, `:=` (t6ALT3 ="n", t6AD3="0")
+           ][t6AD == t6REFD, `:=` (t6AD1="0", t6AD2="0", t6AD3="0")
+           ][t7AD1 < 2 & AltSNPsSameAsCK01!=1, `:=` (t7ALT1 ="n", t7AD1="0")
+           ][t7AD2 < 2 & AltSNPsSameAsCK01!=1, `:=` (t7ALT2 ="n", t7AD2="0")
+           ][t7AD3 < 2 & AltSNPsSameAsCK01!=1, `:=` (t7ALT3 ="n", t7AD3="0")
+           ][t7AD == t7REFD, `:=` (t7AD1="0", t7AD2="0", t7AD3="0")
+           ][t8AD1 < 2 & AltSNPsSameAsCK01!=1, `:=` (t8ALT1 ="n", t8AD1="0")
+           ][t8AD2 < 2 & AltSNPsSameAsCK01!=1, `:=` (t8ALT2 ="n", t8AD2="0")
+           ][t8AD3 < 2 & AltSNPsSameAsCK01!=1, `:=` (t8ALT3 ="n", t8AD3="0")
+           ][t8AD == t8REFD, `:=` (t8AD1="0", t8AD2="0", t8AD3="0")
+           ][t9AD1 < 2 & AltSNPsSameAsCK01!=1, `:=` (t9ALT1 ="n", t9AD1="0")
+           ][t9AD2 < 2 & AltSNPsSameAsCK01!=1, `:=` (t9ALT2 ="n", t9AD2="0")
+           ][t9AD3 < 2 & AltSNPsSameAsCK01!=1, `:=` (t9ALT3 ="n", t9AD3="0")
+           ][t9AD == t9REFD, `:=` (t9AD1="0", t9AD2="0", t9AD3="0")]
+
+#make a SNP number column
+tolmatrix2 <- tolmatrix2 [!is.na(oAD1)>1&str_length(oALT1)==1, "oSNPnumber" := 1 ][oAD1=="0", oSNPnumber := 0
+                        ][!is.na(hAD1)>1&str_length(hALT1)==1, "hSNPnumber" := 1 ][hAD1=="0", hSNPnumber := 0
+                        ][!is.na(fAD1)>1&str_length(fALT1)==1, "fSNPnumber" := 1 ][fAD1=="0", fSNPnumber := 0
+                        ][!is.na(cAD1)>1&str_length(cALT1)==1, "cSNPnumber" := 1 ][cAD1=="0", cSNPnumber := 0
+                        ][!is.na(bAD1)>1&str_length(bALT1)==1, "bSNPnumber" := 1 ][bAD1=="0", bSNPnumber := 0]
+#make a new column adding snps from each tolerant plant.
+tolmatrix2 <- tolmatrix2[, "SNPno_inTol" := oSNPnumber + hSNPnumber + fSNPnumber + cSNPnumber + bSNPnumber][SNPno_inTol==5, "SNPno_inall5Tol" := 1] 
+
+#make a new column with SNPs not in CK01010101 called 1 and others called 0.
+tolmatrix2 <- tolmatrix2[ hSNPnumber == "1" | fSNPnumber == "1"| cSNPnumber == "1" | bSNPnumber == "1", "dissimilar_SNPs":=1][oSNPnumber == "1", dissimilar_SNPs:=0] 
+
+
+
+
+tolmatrix2 <- tolmatrix2[, POS := as.integer(POS)]
+Smp_tmx2b  <- tolmatrix2[POS %between% c(6185769, 6188976),]
+#t <- lapply(tolmatrix2,class)
+fwrite(tolmatrix2, file="tolmatrix3.csv")
+rm(tolmatrix2)
+```
+#snp rate in common between tolerants across chromosome 10
+```{r rate in common between tolerants across chromosome 10}
+tolmatrix3 <- fread("/powerplant/workspace/hrtcdf/github/lataniaAlleles/latpool/tolmatrix3.csv")
+Smp_tolmx3 <- tolmatrix3[POS %between% c(6185769, 6188976),]
+avgSNPrate <- tolmatrix3[, "nucCount" := 1][, "nucNumber" := (sum(nucCount, na.rm = FALSE))]#number of sites with individuals in common, #sum SNPno_inall5Tol by gene name
+
+avgSNPrate <- avgSNPrate[, "percent_identical_SNPs" := (sum(SNPno_inall5Tol, na.rm = TRUE)/nucNumber*100) 
+                        ][, "percent_CK_inDel" := (sum(inDelno_inall5Tol, na.rm = TRUE)/nucNumber*100)
+                        ][, "percent_dissimilar_SNPs" := (sum(dissimilar_SNPs, na.rm = TRUE)/nucNumber*100)
+                        ][, "percent_dissimilar_inDel" := (sum(dissimilar_inDels, na.rm = TRUE)/nucNumber*100)]
+
+avgSNP <- avgSNPrate[, .(percent_identical_SNPs, percent_dissimilar_SNPs, percent_dissimilar_inDel, percent_CK_inDel)]
+avgSNP <- avgSNP[,.(percent_identical_SNPs = mean(percent_identical_SNPs, na.rm=TRUE), percent_dissimilar_SNPs = mean(percent_dissimilar_SNPs, na.rm=TRUE), percent_dissimilar_inDel = mean(percent_dissimilar_inDel, na.rm=TRUE), percent_CK_inDel = mean(percent_CK_inDel, na.rm=TRUE))]#[!is.na(sumSNPsSameAsCK01)][, .(sumSNPsSameAsCK01 = mean(sumSNPsSameAsCK01))]
+avgSNP
+```
+
+#sumSNPsSameAsCK01=1.581939, Percent_inconsistant_SNPs=9.866304, Percent_diff_inDel=0.7004502, Percent_CK_inDel= 9.730644
+```{r data for plot binned chr10, fig.width=12, fig.height=12}
+tolmatrix3 <- fread("/powerplant/workspace/hrtcdf/github/lataniaAlleles/latpool/tolmatrix3.csv")
+#test1 <- tolmatrix3[POS %between% c(19000000, 20000000),]
+
+bed0     <- fread("/powerplant/workspace/hrtcdf/github/lataniaAlleles/latpool/Mbbins_0.1.bed")
+right_hand <- function(dt, bed0)  {
+  IRanges::findOverlapPairs(query=dt, subject=bed0) %>% second() %>% names()
+}    
+snp_bed <- function(vcf, bed0) {           
+  bed0   <- IRanges::IRanges(start = bed0$V2, end = bed0$V3, names = bed0$V1)
+  return(vcf[, gene_name0 := right_hand(POS, bed0), by = inrange(POS, start(bed0), end(bed0))][!is.na(gene_name0)])
+}
+
+SNPs_ingenes <- snp_bed(tolmatrix3, bed0) #add bedsites to matrix.
+test1 <- SNPs_ingenes[POS %between% c(6185769, 6188976),]
+#number of sites with individuals in common, #sum SNPno_inall5Tol by gene name
+SNPs_ingenes <- SNPs_ingenes[, "nucCount" := 1][, "nucNumber" := (sum(nucCount, na.rm = FALSE)), by=gene_name0]
+
+#code sites with 5 tol individuals in common, calculate the percentage of alleles the same among tolerant individuals by gene name
+SNPs_ingenes <- SNPs_ingenes[, "percent_identical_SNPs" := (sum(SNPno_inall5Tol, na.rm = TRUE)/nucNumber*100), by=gene_name0]  
+SNPs_ingenes <- SNPs_ingenes[, "percent_identical_inDels" := (sum(inDelno_inall5Tol, na.rm = TRUE)/nucNumber*100), by=gene_name0]
+SNPs_ingenes <- SNPs_ingenes[, "percent_dissimilar_SNPs" := (sum(dissimilar_SNPs, na.rm = TRUE)/nucNumber*100), by=gene_name0]
+SNPs_ingenes <- SNPs_ingenes[, "percent_dissimilar_inDels" := (sum(dissimilar_inDels, na.rm = TRUE)/nucNumber*100), by=gene_name0]
+test2 <- SNPs_ingenes[POS %between% c(6185769, 6188976),]
+
+ac10 <- SNPs_ingenes[,.(POS, gene_name0, percent_identical_SNPs)][, SNP_type := "identical_SNPs"]
+ac10 <- setnames(ac10, c("POS", "gene_name0", "PercentSNPs", "SNP_type"))
+bc10 <- SNPs_ingenes[,.(POS, gene_name0, percent_dissimilar_SNPs)][, SNP_type := "dissimilar_SNPs"]
+bc10 <- setnames(bc10, c("POS", "gene_name0", "PercentSNPs", "SNP_type"))
+cc10 <- SNPs_ingenes[,.(POS, gene_name0, percent_dissimilar_inDels)][, SNP_type := "dissimilar_inDels"]
+cc10 <- setnames(cc10, c("POS", "gene_name0", "PercentSNPs", "SNP_type"))
+dc10 <- SNPs_ingenes[,.(POS, gene_name0, percent_identical_inDels)][, SNP_type := "identical_inDels"]
+dc10 <- setnames(dc10, c("POS", "gene_name0", "PercentSNPs", "SNP_type"))
+SNPs_chr10ab <- rbind(ac10, bc10, fill=TRUE)
+SNPs_chr10cd <- rbind(cc10, dc10, fill=TRUE)
+SNPs_chr10 <- rbind(SNPs_chr10ab, SNPs_chr10cd, fill=TRUE)
+t1 <- SNPs_chr10[POS %between% c(6185769, 7188976),]
+SNPs_chr10 <- SNPs_chr10[, "POS_Mb":= POS/1000000]
+t2 <- SNPs_chr10[POS %between% c(6185769, 7188976),]
+rm(ac10, bc10, cc10, dc10, SNPs_ingenes, SNPs_chr10ab, SNPs_chr10cd)
+SNPs_chr10 <- SNPs_chr10[!is.na(PercentSNPs), ]
+t3 <- SNPs_chr10[POS %between% c(6185769, 7188976),]
+#SNPs_chr10 <-unique(SNPs_chr10, by=c("POS_Mb", "SNP_type"))
+t4 <- SNPs_chr10[POS %between% c(6185769, 7188976),]
+SNPs_chr10 <- SNPs_chr10[, "avg_pSNPs_bygene" := mean(PercentSNPs), by= "gene_name0"]
+SNPs_chr10 <-unique(SNPs_chr10, by=c("gene_name0","avg_pSNPs_bygene", "SNP_type"))
+t5 <- SNPs_chr10[POS %between% c(6185769, 7188976),]
+
+u <- SNPs_chr10[, lapply(.SD, round, digits = 1), by = POS, .SDcols = c("POS_Mb")]#1digit rounding
+v <- SNPs_chr10[, .(PercentSNPs, gene_name1, SNP_type, Polymorphism)]
+SNPs_chr10 <- cbind(u, v) #rounding
+
+t6 <- SNPs_chr10[POS %between% c(6185769, 7188976),]
+fwrite(SNPs_chr10, file="SNPs_chr10_10mbbin.csv", append=FALSE)
+```
+
+```{r plot binned chr10, fig.width=8, fig.height=8}
+SNPs_chr10      <- fread("SNPs_chr10_10mbbin.csv")
+my_title1       <- paste("The percentage of nucleotide polymorphisms in 0.1 Mb bins")
+my_title2       <- paste("on chromosome 10 which are identical or dissimilar to Female 2")
+my_titleX       <- expression(paste("Position along Chromosome 10 (Mb)"))
+my_titleY       <- expression(paste("Percentage of bined nucleotide polymorphisms \n      identical and dissimilar to Female 2"))
+my_legend_title <- paste("SNPs not in Female 1")
+lat_SNPs <- function(tolSNPs_ig) {
+    ggplot(SNPs_chr10, aes(x=POS_Mb, y=PercentSNPs, group=SNP_type)) +
+    geom_point(aes(color = SNP_type, fill = SNP_type), alpha=1, size= 1) +
+    geom_smooth(aes(color = SNP_type, fill = SNP_type), method = loess, formula = y ~ x, size= 0.5)+
+    #scale_fill_manual(values=c("cyan", "red", "cyan", "red"))+
+    #scale_color_manual(values=c("grey0", "grey0", "grey0","grey0"))+ 
+    #scale_color_manual(values=c("deepskyblue", "olivedrab", "tomato", "chartreuse4"))+
+    #scale_shape_manual(values=c(4, 3, 1, 2))+
+    geom_hline(aes(yintercept= 1.52, linetype = "Identical SNPs"), color = "grey40") + #color = "blue")
+    geom_hline(aes(yintercept= 9.65, linetype = "Dissimilar SNPs"), color = "grey40") + #color = "blue"
+    geom_hline(aes(yintercept= 0.36, linetype = "Dissimilar inDels"), color = "grey40") + #color = "chartreuse4"
+    geom_hline(aes(yintercept= 0.07, linetype = "Identical inDels"), color = "grey40") + #color = "chartreuse4"
+    scale_linetype_manual(name = "Chr10 Avg", values = c(3, 4, 2, 1))+
+    guides(x = guide_axis(title = my_titleX), y = guide_axis(title = my_titleY ))+
+    theme(axis.title.y = element_text(hjust = 0.5, vjust = 0.5, size=12))+
+    theme(axis.title.x = element_text(hjust = 0.5, vjust = 0, size=12))+   
+    theme(axis.text.x = element_text(hjust=0.5, vjust = 0.5, size=10))+
+    theme(axis.text.y = element_text(vjust = 0.0, hjust= 0.5, size=10))+
+    theme(legend.title = element_text(vjust = 0.0, hjust= 0.5, size=12))+
+    theme(plot.margin = unit(c(0.5,0.5,0.5,1), "cm"))+ #margin height, right, bottom, left.
+    scale_y_continuous(breaks=seq(0,22,2))+
+    scale_x_continuous(breaks=seq(0,26,2))#0 is the start, 14 end, units of 2.
+}
+ggsave("polymism_intol5_Chr10bins.png", plot = lat_SNPs())
+ggdraw(lat_SNPs())
+```
 
 #git add 'filename' 
 #git commit 

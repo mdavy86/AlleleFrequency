@@ -39,9 +39,6 @@ module load bwa/0.7.12
 module load samtools/1.2
 module load "load openlava"
 ```
-```{bash}
-
-```
 
 
 ## Load reference genome with index files
@@ -168,45 +165,4 @@ cd /powerplant/workspace/hrtcdf/FSTs/$Dir2
   echo "/powerplant/workspace/hrtcdf/$Dir2/$bam" >>$Dir2"Bam.txt";
   done
 
-```
-
-```{bash}
-module load openlava
-bjobs
-```
-```{bash}
-outputDir1=/powerplant/workspace/hrtcdf/FSTs/TestPool
-ls $outputDir1
-```
-
-
-```{bash}
-pwd
-```
-```{bash}
-cd ~
-ls
-```
-
-```{bash}
-inputDir=/powerplant/workspace/hrards/projects/hrtcdf/10.alignments/bwa
-outputDir1=/powerplant/workspace/hrtcdf/FSTs/TestPool
-outputDir2=/powerplant/workspace/hrtcdf/FSTs/FullPool
-cd $outputDir1
-rm core*
-ls
-```
-```{bash}
-echo "# Allele-Frequency" >> README.md
-```
-git init
-git add your files and README.md
-git commit -m "first commit"
-git remote add origin https://github.com/caseyflay/Allele-Frequency.git
-https://github.com/caseyflay/AlleleFrequency/tree/TestPool
-git push -u origin master
-
-```{bash}
-module load openlava
-bjobs
 ```

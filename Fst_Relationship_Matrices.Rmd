@@ -7,271 +7,38 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(PFRBreedR)
+library(ActR)
 ```
 
 # Test pool A1. Russell father. 90% male. Missing the pedigree of 2 males.
 
 ```{r}
-library(PFRBreedR)
-library(ActR)
-Set1 <- c(
- 'CK02_04' #Female
-,'CK06_01' #Male
-,'CK13_02' #Male
-,'CK20_01' #Male
-,'CK51_06' #Female
-)
+A1_mp  <- c('CK02_04','CK06_01','CK13_02','CK20_01','CK51_06') # Male pool A1. Russell father. 90% male. Missing the pedigree of 2 males.
+B2_mp  <- A1_mp ##Male pool B2 same as A1
+C3_mp  <- A1_mp#Male pool C3 same as A1
+D6_mp  <- c('CK02_04','CK06_01','CK09_06','CK13_02','CK20_01','CK51_06')#Test pool D6
+E11_mp <- A1_mp#Male pool E11 same as A1
+F12_mp <- A1_mp#Male pool F12 same as A1
+G13_mp <- A1_mp#Male pool G13 same as A1
+H14_mp <- A1_mp#Male pool H14 same as A1
+I15_mp <- A1_mp#Male pool I15 same as A1
+J16_mp <- A1_mp#Male pool J16 same as A1
 
-EBTree(5,PI=Set1) 
+#Full pool
+CK02_01_tp <- c('CK15_03','CK17_02','CK20_01','Bejing #36','CK51_01')#Full pool CK02_01
+CK10_02_tp <- c('CK17_03','CK18_01','CK19_03','CK51_09')#Full pool CK10_02
+CK19_03_tp <- c('CK10_02','CK10_05','CK13_02','CK15_04','Bejing #36','CK51_01')#Full pool CK19_03
+CK20_01_tp <- c('CK02_01','CK09_11','CK10_03')#Full pool CK20_01
+CK22_03_tp <- c('CK23_08','CK51_09')#Full pool CK22_03
+CK23_08_tp <- c('CK01_01_01_01','CK15_03','CK16_01','CK22_03')#Full pool CK23_08
+CK51_01_tp <- c('CK02_01','CK17_03','CK19_03')#Full pool CK51_01
+CK51_09_tp <- c('CK02_04','CK06_01','CK10_02','CK15_04','CK22_03')#Full pool CK51_09
 
-pedigrees <- EBPedigree(crpId=5, PI=Set1)
-coanFn(Set1, myPed=pedigrees)
+EBTree(5,PI=A1_mp) 
+
+pedigrees <- EBPedigree(crpId=5, PI=A1_mp)
+coanFn(A1_mp, myPed=pedigrees)
 ```
-#Test pool B2
-```{r}
-library(PFRBreedR)
-library(ActR)
-Set1 <- c('CK02_04',	
-          'CK06_01',	
-          'CK13_02',	
-          'CK20_01',	
-          'CK51_06')
 
-EBTree(5,PI=Set1) 
 
-pedigrees <- EBPedigree(crpId=5, PI=Set1)
-coanFn(Set1, myPed=pedigrees)
-```
-#Test pool C3
-```{r}
-library(PFRBreedR)
-library(ActR)
-Set1 <- c('CK02_04',	
-          'CK06_01',	
-          'CK13_02',	
-          'CK20_01',	
-          'CK51_06')
-
-EBTree(5,PI=Set1) 
-
-pedigrees <- EBPedigree(crpId=5, PI=Set1)
-coanFn(Set1, myPed=pedigrees)
-```
-#Test pool D6
-```{r}
-library(PFRBreedR)
-library(ActR)
-Set1 <- c('CK02_04',	
-          'CK06_01',
-          'CK09_06',
-          'CK13_02',	
-          'CK20_01',	
-          'CK51_06')
-
-EBTree(5,PI=Set1) 
-
-pedigrees <- EBPedigree(crpId=5, PI=Set1)
-coanFn(Set1, myPed=pedigrees)
-```
-#Test pool E11
-```{r}
-library(PFRBreedR)
-library(ActR)
-Set1 <- c('CK02_04',	
-          'CK06_01',	
-          'CK13_02',	
-          'CK20_01',	
-          'CK51_06')
-
-EBTree(5,PI=Set1) 
-
-pedigrees <- EBPedigree(crpId=5, PI=Set1)
-coanFn(Set1, myPed=pedigrees)
-```
-#Test pool F12
-```{r}
-library(PFRBreedR)
-library(ActR)
-Set1 <- c('CK02_04',	
-          'CK06_01',	
-          'CK13_02',	
-          'CK20_01',	
-          'CK51_06')
-
-EBTree(5,PI=Set1) 
-
-pedigrees <- EBPedigree(crpId=5, PI=Set1)
-coanFn(Set1, myPed=pedigrees)
-```
-#Test pool G13
-```{r}
-library(PFRBreedR)
-library(ActR)
-Set1 <- c('CK02_04',	
-          'CK06_01',	
-          'CK13_02',	
-          'CK20_01',	
-          'CK51_06')
-
-EBTree(5,PI=Set1) 
-
-pedigrees <- EBPedigree(crpId=5, PI=Set1)
-coanFn(Set1, myPed=pedigrees)
-```
-#Test pool H14
-```{r}
-library(PFRBreedR)
-library(ActR)
-Set1 <- c('CK02_04',	
-          'CK06_01',	
-          'CK13_02',	
-          'CK20_01',	
-          'CK51_06')
-
-EBTree(5,PI=Set1) 
-
-pedigrees <- EBPedigree(crpId=5, PI=Set1)
-coanFn(Set1, myPed=pedigrees)
-```
-#Test pool I15
-```{r}
-library(PFRBreedR)
-library(ActR)
-Set1 <- c('CK02_04',	
-          'CK06_01',	
-          'CK13_02',	
-          'CK20_01',	
-          'CK51_06')
-
-EBTree(5,PI=Set1) 
-
-pedigrees <- EBPedigree(crpId=5, PI=Set1)
-coanFn(Set1, myPed=pedigrees)
-```
-#Test pool J16
-```{r}
-library(PFRBreedR)
-library(ActR)
-Set1 <- c('CK02_04',	
-          'CK06_01',	
-          'CK13_02',	
-          'CK20_01',	
-          'CK51_06')
-
-EBTree(5,PI=Set1) 
-
-pedigrees <- EBPedigree(crpId=5, PI=Set1)
-coanFn(Set1, myPed=pedigrees)
-```
-#Full pool CK02_01
-```{r}
-library(PFRBreedR)
-library(ActR)
-Set1 <- c('CK15_03',	
-          'CK17_02',	
-          'CK20_01',	
-          'Bejing #36',	
-          'CK51_01')
-
-EBTree(5,PI=Set1) 
-
-pedigrees <- EBPedigree(crpId=5, PI=Set1)
-coanFn(Set1, myPed=pedigrees)
-```
-#Full pool CK10_02
-```{r}
-library(PFRBreedR)
-library(ActR)
-Set1 <- c('CK17_03',	
-          'CK18_01',	
-          'CK19_03',	
-          'CK51_09')
-
-EBTree(5,PI=Set1) 
-
-pedigrees <- EBPedigree(crpId=5, PI=Set1)
-coanFn(Set1, myPed=pedigrees)
-```
-#Full pool CK19_03
-```{r}
-library(PFRBreedR)
-library(ActR)
-Set1 <- c('CK10_02',	
-          'CK10_05',	
-          'CK13_02',	
-          'CK15_04',	
-          'Bejing #36',
-          'CK51_01')
-
-EBTree(5,PI=Set1) 
-
-pedigrees <- EBPedigree(crpId=5, PI=Set1)
-coanFn(Set1, myPed=pedigrees)
-```
-#Full pool CK20_01
-```{r}
-library(PFRBreedR)
-library(ActR)
-Set1 <- c('CK02_01',	
-          'CK09_11',	
-          'CK10_03')
-
-EBTree(5,PI=Set1) 
-
-pedigrees <- EBPedigree(crpId=5, PI=Set1)
-coanFn(Set1, myPed=pedigrees)
-```
-#Full pool CK22_03
-```{r}
-library(PFRBreedR)
-library(ActR)
-Set1 <- c('CK23_08',
-          'CK51_09')
-
-EBTree(5,PI=Set1) 
-
-pedigrees <- EBPedigree(crpId=5, PI=Set1)
-coanFn(Set1, myPed=pedigrees)
-```
-#Full pool CK23_08
-```{r}
-library(PFRBreedR)
-library(ActR)
-Set1 <- c('CK01_01_01_01',	
-          'CK15_03',	
-          'CK16_01',
-          'CK22_03')
-
-EBTree(5,PI=Set1) 
-
-pedigrees <- EBPedigree(crpId=5, PI=Set1)
-coanFn(Set1, myPed=pedigrees)
-```
-#Full pool CK51_01
-```{r}
-library(PFRBreedR)
-library(ActR)
-Set1 <- c('CK02_01',	
-          'CK17_03',	
-          'CK19_03')
-
-EBTree(5,PI=Set1) 
-
-pedigrees <- EBPedigree(crpId=5, PI=Set1)
-coanFn(Set1, myPed=pedigrees)
-```
-#Full pool CK51_09
-```{r}
-library(PFRBreedR)
-library(ActR)
-Set1 <- c('CK02_04',	
-          'CK06_01',	
-          'CK10_02',	
-          'CK15_04',	
-          'CK22_03')
-
-EBTree(5,PI=Set1) 
-
-pedigrees <- EBPedigree(crpId=5, PI=Set1)
-coanFn(Set1, myPed=pedigrees)
-```

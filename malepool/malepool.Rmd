@@ -1,5 +1,5 @@
 ---
-title: "testpoolmpile"
+title: "malepoolmpile"
 author: "Casey Flay"
 date: "30/09/2020"
 output:
@@ -22,9 +22,9 @@ library(GenomicRanges)
 library(tools)
 library(future)
 library(future.batchtools)
-plan(batchtools_openlava)
+plan(batchtools_openlava, resources = list(threads=1))
 setDTthreads(1)
-module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 vcftools")
+module("load openlava asub/2.2 bwa/0.7.12 samtools/0.1.18 bcftools/1.10.2 vcftools")
 ```
 
 ```{r symlink}
@@ -41,43 +41,50 @@ if (dir.exists(mainDir)){
     setwd(file.path(mainDir, subDir))
 }
 
-malepoolfiles <- dir(royDir, pattern = "^HW5YYDSXX", full.names = TRUE, include.dirs = TRUE)
+malepoolfiles       <- dir(royDir, pattern = "^HW5YYDSXX", full.names = TRUE, include.dirs = TRUE)
 
-#file.symlink (tpoolfiles, outDir)
-## we don't need the full pathname into the symlink file.
+#file.symlink(malepoolfiles, outDir)
 ```
 
 ```{r transform filenames to sample, lane and suffix for data.table from link}
-pattern <- c("HW5YYDSXX_A1_L003.bam", "HW5YYDSXX_B2_L003.bam", "HW5YYDSXX_C3_L003.bam",
-"HW5YYDSXX_E11_L003.bam", "HW5YYDSXX_F12_L003.bam", "HW5YYDSXX_G13_L004.bam", "HW5YYDSXX_H14_L004.bam","HW5YYDSXX_I15_L004.bam","HW5YYDSXX_J16_L004.bam")
-
-pattern <- str_replace(pattern, "XX_" , "XX_&")
-pattern <- str_replace(pattern, "_L" , "&_L")
-pattern <- str_replace(pattern, ".bam" , "&.bam")
-pattern
-malepooldt <- {data.table(pattern) %>%
-  separate(pattern, into = c("HL55", "sample", "lane", "bam", "version"), sep = "&", fill = "right") %>%
-  mutate("version" = str_extract(sample, regex("/")))
-}
-malepooldt
-
-colnames(malepooldt) <- c("HL55", "sample", "lane", "bam", "version" )
+malepooldt_bam <- as.data.table(grep(paste(".bam$", collapse = "|"), list.files(path="."), invert=FALSE, value=TRUE))
+malepooldt_bam <- malepooldt_bam[, V2 := str_replace_all(V1, "_L" , "&_L")
+               ][, V2 := str_replace_all(V2, "XX_" , "XX_&")
+               ][, V2 := str_replace_all(V2, ".bam" , "&.bam")                 
+               ][, c("HL55", "sample", "lane", "ftype") := tstrsplit(V2, "&", fixed=TRUE)
+               ][, V2:=NULL]
+malepooldt_bam
+#subset malepool from parent pool files
+fwrite(malepooldt_bam, 'malepooldt_bam.tsv', append=FALSE)
 ```
 
-## use samtools for indexing normal?, tabix and stats.
-```{bash}
-t=8
-logDir="/powerplant/workspace/powerplant/workspace/hrtcdf/github/FSTs/malepool/logDir"
-if  [ ! -d  "logDir" ]; then mkdir "logDir" ; fi
+```{r index}
+vcfin       <- paste(malepooldt_bam$HL55, malepooldt_bam$sample, malepooldt_bam$lane, malepooldt_bam$ftype, sep = "")
+vcfin
+for (i in vcfin){
+vcfcmd      <- glue::glue("bcftools index -t {i}")
+logDir         <- "/powerplant/workspace/hrtcdf/github/FSTs/malepool/logDir"
+bsub_out_file  <- file.path(logDir, "job.out"); bsub_err_file <- file.path(logDir, "job.err")
+bsub_cmd       <- glue("bsub -n 8 -o {bsub_out_file} -e {bsub_err_file} {vcfcmd}")
+system(bsub_cmd)
+}
+```
 
-for vcf in $(ls *filt.vcf.gz); do
-#bsub -n $t -o $logDir/$vcf.log -e $logDir/$vcf.err "bcftools stats $vcf > ${vcf}.stats "
-#bsub -n $t -o $logDir/$vcf.err -e $logDir/$vcf.err "samtools index $vcf > $vcf.bai"
-bsub -n $t -o $logDir/$vcf.log -e $logDir/$vcf.err "bcftools index -t $vcf"
-bsub -n $t -o $logDir/$vcf.log -e $logDir/$vcf.err "bcftools index -t $vcf"
-#bsub -n $t -o $logDir/$vcf.log -e $logDir/$vcf.err "samtools index $vcf"
-#echo ${vcf}
-done
+```{r run samtools mpileup for chr25 using samtools/0.1.18. since popoolation2 requires that version }
+submit_mpileup <- function(reference = "*.fa.gz", output = c(), bamfiles = c(), job.init = "asub", job.opts = "-q normal") {
+  cmd          <- "samtools mpileup -r 'chr25' -f {reference} {bamfiles} > {out}" 
+  tmpf         <- tempfile(pattern = "submit_mileup.", fileext = ".sh")
+  writeLines(text = c(glue(cmd)), con = tmpf)
+  submit       <- "{job.init} {job.opts} {tmpf}"
+  system(glue(submit), intern = TRUE)
+}
+
+bamfiles    <- paste(malepooldt_bam$V1)
+file.exists(bamfiles)
+out         <- paste(malepooldt_bam$sample, "samtoolsmpile_chr25.vcf.gz", sep = "_")
+reference   <- dir("/workspace/hrards/projects/hrtcdf/genome/fasta", pattern = ".*\\.gz$", full.names = TRUE)
+file.exists(reference)
+submit_mpileup(reference = reference, output = out, bamfiles = bamfiles)
 ```
 
 ```{r run bcftools mpileup for chr25}
@@ -92,9 +99,9 @@ mpileuptags <- "DP,AD,SP,INFO/AD"
 bcfcalltags <- "GQ,GP"
   pvalThres <- 0.99
 
-bamfiles    <- paste(malepooldt$HL55, malepooldt$sample, malepooldt$lane, malepooldt$bam, sep = "")
+bamfiles    <- paste(malepooldt_bam$HL55, malepooldt_bam$sample, malepooldt_bam$lane, malepooldt_bam$ftype, sep = "")
 #bamfiles
-out         <- paste(malepooldt$sample, "chr25_pile.vcf.gz", sep = "_")
+out         <- paste(malepooldt_bam$sample, "_chr25_pile_.vcf.gz", sep = "_")
 #out
 
 reference   <- dir("/workspace/hrards/projects/hrtcdf/genome/fasta", pattern = ".*\\.gz$", full.names = TRUE)
@@ -103,19 +110,29 @@ reference   <- dir("/workspace/hrards/projects/hrtcdf/genome/fasta", pattern = "
 submit_mpileup(reference = reference, output = out, bamfiles = bamfiles)
 ```
 
-```{r update malepooldt}
-malepooldt1 <- malepooldt[, bam := NULL]
-malepooldt1 <- malepooldt1[, vcf:= ".vcf.gz"]
-malepooldt1 <- malepooldt1[, chr:= "_chr25_"]
-malepooldt1 <- malepooldt1[, work:= "pile"]
-malepooldt1 <- malepooldt1[, filterquery:= "f"]
+```{r update malepooldt_bam to malepooldt1}
+malepooldt1 <- malepooldt_bam[, `:=` (vcf=".vcf.gz", chr="_chr25_", work="pile_", filterquery="f", "filterq"="withhom", "chr_bit"="1to10Mb_")]
+fwrite(malepooldt1, 'malepooldt1.tsv', append=FALSE)
 ```
 
-```{r filter also taking out homozygous sites}
+```{r allele info plugin}
+malepooldt1 <- malepooldt_bam[, `:=` (infoplugin="infoplugin")]
+vcfin       <- paste(malepooldt1$sample, malepooldt1$chr, malepooldt1$work, malepooldt1$vcf, sep = "")
+
+for (i in vcfin){
+vcfcmd      <- glue::glue("bcftools +fill-tags {i}  -o 'infoplugin{i}' ")
+vcfcmd
+logDir         <- "/powerplant/workspace/hrtcdf/github/FSTs/malepool/logDir"
+bsub_out_file  <- file.path(logDir, "job.out"); bsub_err_file <- file.path(logDir, "job.err")
+bsub_cmd       <- glue("bsub -n 8 -o {bsub_out_file} -e {bsub_err_file} {vcfcmd}")
+system(bsub_cmd)
+}
+```
+```{r filter removing homs}
 #vcfin       <- list.files(path = ".", pattern = "*chr25_pile.vcf.gz$")
 vcfin       <- paste(malepooldt1$sample, malepooldt1$chr, malepooldt1$work, malepooldt1$vcf, sep = "")
 for (i in vcfin){
-vcfcmd      <- glue::glue("bcftools query {i} -e 'INFO/DP<30 || INFO/DP>120 || INFO/AD[0]=INFO/AD[1] || INFO/AD[1]<10' -f '[[%SAMPLE]]\t%CHROM\t%POS\t%REF\t%ALT\t%DP\t%AD\t%AD{{0}}\t%AD{{1}}\t%AD{{2}}\t%AD{{3}}\t%AC\t%AN [[\t%GT]]\n' -o 'f{i}' ")
+vcfcmd      <- glue::glue("bcftools query {i} -e 'INFO/DP<10 || INFO/DP>120 || INFO/AD[0]=INFO/AD[1] || INFO/AD[1]<10' -f '[[%SAMPLE]]\t%CHROM\t%POS\t%REF\t%ALT\t%DP\t%AD\t%AD{{0}}\t%AD{{1}}\t%AD{{2}}\t%AD{{3}}\t%AC\t%AN [[\t%GT]]\n' -o 'f{i}' ")
 vcfcmd
 logDir         <- "/powerplant/workspace/hrtcdf/github/FSTs/malepool/logDir"
 bsub_out_file  <- file.path(logDir, "job.out"); bsub_err_file <- file.path(logDir, "job.err")
@@ -126,9 +143,10 @@ system(bsub_cmd)
 
 ```{r filter without removing homs creating files for the first 10000000 sites and then past 10000001-}
 vcfin       <- paste(malepooldt1$sample, malepooldt1$chr, malepooldt1$work, malepooldt1$vcf, sep = "")
+
 #to10mb
 for (i in vcfin){
-vcfcmd      <- glue::glue("bcftools query {i} -r 'chr25:1-10000000' -e 'INFO/DP<30 || INFO/DP>120' -f '[[%SAMPLE]]\t%POS\t%REF\t%ALT\t%ALT{{0}}\t%ALT{{1}}\t%ALT{{2}}\t%DP\t%AD\t%AD{{0}}\t%AD{{1}}\t%AD{{2}} \n' -o 'to10mbwithhom{i}' ")
+vcfcmd      <- glue::glue("bcftools query {i} -r 'chr25:1-10000000' -e 'INFO/DP<30 || INFO/DP>120' -f '[[%SAMPLE]]\t%POS\t%REF\t%ALT\t%ALT{{0}}\t%ALT{{1}}\t%ALT{{2}}\t%DP\t%AD\t%AD{{0}}\t%AD{{1}}\t%AD{{2}} \n' -o 'to10Mb{i}' && bcftools index -t to10Mb{i}")
 logDir         <- "/powerplant/workspace/hrtcdf/github/FSTs/malepool/logDir"
 bsub_out_file  <- file.path(logDir, "job.out"); bsub_err_file <- file.path(logDir, "job.err")
 bsub_cmd       <- glue("bsub -n 8 -o {bsub_out_file} -e {bsub_err_file} {vcfcmd}")
@@ -137,17 +155,28 @@ system(bsub_cmd)
 
 #from10mb
 for (i in vcfin){
-vcfcmd2      <- glue::glue("bcftools query {i} -r 'chr25:10000001-' -e 'INFO/DP<30 || INFO/DP>120' -f '[[%SAMPLE]]\t%POS\t%REF\t%ALT\t%ALT{{0}}\t%ALT{{1}}\t%ALT{{2}}\t%DP\t%AD\t%AD{{0}}\t%AD{{1}}\t%AD{{2}} \n' -o 'from10Mbwithhom{i}'")
+vcfcmd2      <- glue::glue("bcftools query {i} -r 'chr25:10000001-' -e 'INFO/DP<30 || INFO/DP>120' -f '[[%SAMPLE]]\t%POS\t%REF\t%ALT\t%ALT{{0}}\t%ALT{{1}}\t%ALT{{2}}\t%DP\t%AD\t%AD{{0}}\t%AD{{1}}\t%AD{{2}} \n' -o 'from10Mb_{i}' && bcftools index -t 'from10Mb_{i}'")
 logDir         <- "/powerplant/workspace/hrtcdf/github/FSTs/malepool/logDir"
 bsub_out_file  <- file.path(logDir, "job.out"); bsub_err_file <- file.path(logDir, "job.err")
 bsub_cmd       <- glue("bsub -n 8 -o {bsub_out_file} -e {bsub_err_file} {vcfcmd2}")
 system(bsub_cmd)
 }
+
 ```
 
+```{r index}
+#to10mb
+for (i in vcfin){
+vcfcmd      <- glue::glue("bcftools index -t {i}")
+logDir         <- "/powerplant/workspace/hrtcdf/github/FSTs/malepool/logDir"
+bsub_out_file  <- file.path(logDir, "job.out"); bsub_err_file <- file.path(logDir, "job.err")
+bsub_cmd       <- glue("bsub -n 8 -o {bsub_out_file} -e {bsub_err_file} {vcfcmd}")
+system(bsub_cmd)
+}
+```
 
 ```{r run future.batchtools to reduce the time required to run the large files}
-files      <-  paste("withhom", malepooldt$sample, "_chr25_pile.vcf.gz", sep = "")
+files      <-  paste("withhom_", malepooldt1$sample, "_chr25_pile_.vcf.gz", sep = "")
 files
 
 dat <- future({lapply(files, fread, col.names = c('mpSAMPLE','POS','mpREF','mpALT','mpALT0','mpALT1','mpALT2','mpDP','mpAD0','mpAD1','mpAD2'), key = 'POS')
@@ -156,25 +185,22 @@ dat <- future({lapply(files, fread, col.names = c('mpSAMPLE','POS','mpREF','mpAL
 dat
 ```
 
-
-
 ```{r read first half of the .vcf.gz into data.table. reads into single datatable with each data.table as an element in "dat"}
-files      <- paste("to10mbwithhom", malepooldt$sample, "_chr25_pile.vcf.gz", sep="")
+files      <- paste("to10Mb_withhom_", malepooldt1$sample, "_chr25_pile_.vcf.gz", sep="")
 dat        <- lapply(files, fread, col.names = c('mpSAMPLE','POS','mpREF','mpALT','mpALT0','mpALT1','mpALT2','mpDP','mpAD','mpAD0','mpAD1','mpAD2'), key = 'POS')
-names(dat) <- malepooldt$sample
+names(dat) <- malepooldt1$sample
 ```
 
 ```{r get Russellv2a alts to remove russell snps from male pools}
-bcfcmd  <- "bcftools query /powerplant/workspace/hrtcdf/github/FSTs/Russellalt/Russellpile_chr25.vcf.gz -r 'chr25:1-10000000' -f '[%SAMPLE]\t%POS\t%REF\t%ALT\t%ALT{0}\t%ALT{1}\t%ALT{2}\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\n' 2>/dev/null"
+bcfcmd  <- "bcftools query /powerplant/workspace/hrtcdf/github/FSTs/Russellalt/Russellpile_chr25.vcf.gz -r 'chr25:1-10000000' -f '[%SAMPLE]\t%POS\t%REF\t%ALT\t%ALT{0}\t%ALT{1}\t%ALT{2}\t%DP\t%AD\t%AD{0}\t%AD{1}\t%AD{2}\n'"# 2>/dev/null
 DTruref_withalt <- fread(cmd=bcfcmd, col.names = c('rSAMPLE','POS','rREF','rALT','rALT0','rALT1','rALT2','rDP','rAD','rAD0','rAD1','rAD2'), key = 'POS', verbose = FALSE) 
 #qplot(POS, DP, data = DTrualt, color = alta1)
 ```
 
 ```{r merge data tables from pool and Rualts}
 datmerged <- lapply(dat, function(x) merge.data.table(x, DTruref_withalt, all=TRUE, by='POS'))
-```
 
-```{r clean up unneeded files in RAM}
+#clean up unneeded files in RAM
 rm(dat, DTruref_withalt)
 ```
 
@@ -202,10 +228,8 @@ datruuni <- lapply(datmerged, function(x) x[!is.na(rREF) & !is.na(mpREF)
 listpercentmale <- c("90% male", "75% male", "60% male", "80% male", "50% male", "45% male", "32% male", "21% male", "10% male")
 datruunique <- lapply(datruuni, function (x, y) { x[y, on = "mpSAMPLE"] }, data.table("mpSAMPLE" = names(datruuni), pcmale = listpercentmale))
 datruunique <- lapply(datruunique, function(x) x[!is.na(POS)])
-```
-
-```{r clean up unneeded files in RAM}
-rm(datmerged, datruuni)
+#r clean up unneeded files in RAM
+rm(datruuni)
 ```
 
 ```{r}
@@ -215,7 +239,7 @@ lapply(datruunique, function(x) qplot(POS, rAD1, data = x, main=(paste0(x[1, pcm
 **The below is altered to give just the russell alt locations so they can be matched with pool alts of different bases if there are any.**
 ```{r remove snps that do not vary at the alt position between russell and malepools}
 listpercentmale <- c("90% male", "75% male", "60% male", "80% male", "50% male", "45% male", "32% male", "21% male", "10% male")
-datonlyrualt <- lapply(datmerged, function(x) x[!is.na(SAMPLE.y) & !is.na(SAMPLE.y) & ALT.x != ALT.y
+datonlyrualt <- lapply(datmerged, function(x) x[!is.na(mpSAMPLE) & mpALT
         ][, c("SAMPLE.y", "CHROM.y", "REF.y") := NULL
         ][, c("refovertotal", "altovertotal", "AD1.xoverAD1.y","Altoverrefdep"):=list(AD0.x/DP.x, AD1.x/DP.x, AD1.x/AD1.y, AD0.x/(AD0.x+AD1.x+AD0.y))
         ][AD1.x == AD1.y
@@ -277,33 +301,7 @@ lapply(dathomru, function(x) qplot(POS, AD1freq, data = x, color = DP.x, main=(p
 #head(smpl)
 #}
 ```
-## to check home directory file sizes:
-#du -ahd1 | sort -hr
-#du -laSh | sort -hr | head
 
-#echo 386374 386412 386444 10841 10851 5186 >> SNP_list.txt 
-#zcat input_file.vcf.gz | vcftools --vcf - --site-pi --positions SNP_list.txt --out nucleotide_diversity
-#zcat A1_chr25.bcf.gz | vcftools --vcf - --site-pi --positions SNP_list.txt --out malepool
-#vcftools --gzvcf A1_chr25.vcf.gz --freq --positions SNP_list.txt --out $vcf
-#done
-#grep "AF" CK02_01_chr25.bcf.gz
-#grep --help
-#awk CK02_01_chr25.bcf.gz $1 | $2 'chr25:1737600'
-##get header from .gz references: zcat Russell_V2a.fa.gz | grep '>' | less
-#view .gz vcf files zcat CK02_01_chr25.bcf.gz | head -n 30
-#zcat CK02_01_chr25.bcf.gz | grep -v "386373" | cut -f1,2,3,4,5,6,7,8,9,10 | head -n 30
-#zcat CK02_01_chr25.bcf.gz | awk -v "AD" | cut -f1,2,3,4,5,6,7,8,9,10 | head -n 30
-#to view bamfiles samtools tview -p 'chr25:11260' HW5YYDSXX_A1_L003.bam --reference [pathtofile]/Russell_V2a.fa.gz
-#git add 'filename'
-#git commit "message"
-#git push origin master
-##killall -9 rsession
-#https://github.com/caseyflay/HighHealth/blob/master/QTLSeqr/CheckAlleleFreqs.Rmd
-##Calculate AF over all pools on CHR1
-
-#See awk '$2>8...., the smaller the number the larger the number of sites returned (and the looser the association) 
-#You could copy the file /powerplant/workspace/cflasc/Kiwifruit/chinensis/20200827_Fisher_tests_for_Y_associated_SNPs/04.significant_p_values/Russell_V2a.chromosomes.and.unassigned_chr25_genotypes_fisher.out 
-#That will give you all associated sites, then filter for those with the highest -log10_P values
 
 ```{bash not included}
 #tail -n+2 /powerplant/workspace/cflasc/Kiwifruit/chinensis/20200827_Fisher_tests_for_Y_associated_SNPs/04.significant_p_values/Russell_V2a.chromosomes.and.unassigned_chr25_genotypes_fisher.out \

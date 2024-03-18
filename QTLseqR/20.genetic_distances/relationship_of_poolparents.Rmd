@@ -369,12 +369,12 @@ PC1_contribution    <- round((res_svd$d/sum(res_svd$d)*100)[1], digits=2) #all c
 PC2_contribution    <- round((res_svd$d/sum(res_svd$d)*100)[2], digits=2)
 
 PCA_of_poolQTLp <- function(A) {
-    ggplot(PCA_of_poolQTL, aes(x=PC2, y=PC1, colour=Parent_sample, fill=Parent_sample))+
-    geom_point(size= 3)+ 
-    scale_x_continuous(name=paste0("PC2 (",PC2_contribution," %)")) + #, breaks=seq(-0.2,0.2,0.04)
-    scale_y_continuous(name=paste0("PC1 (",PC1_contribution," %)")) +
+    ggplot(PCA_of_poolQTL, aes(x=PC1, y=PC2, colour=Parent_sample, fill=Parent_sample))+
+    geom_point(size= 4)+ 
+    scale_x_continuous(name=paste0("PC1 (",PC1_contribution," %)")) + #, breaks=seq(-0.2,0.2,0.04)
+    scale_y_continuous(name=paste0("PC2 (",PC2_contribution," %)")) +
     scale_colour_viridis_d() +
-    ggtitle("Principal component analysis of the \ngenomic distance between pool parents")+
+    #ggtitle("Principal component analysis of the \ngenomic distance between pool parents")+
     theme(plot.title   = element_text(hjust = 0.5, vjust = 0.5, size=14, family="Arial"),
           axis.title.y = element_text(hjust = 0.5, vjust = 0.5, size=12, family="Arial"),
           axis.title.x = element_text(hjust = 0.5, vjust = 0,   size=12, family="Arial"),

@@ -23,10 +23,10 @@ library(future.batchtools)
 library(here)
 plan(batchtools_openlava, resources = list(threads=1))
 setDTthreads(1)
-module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 popoolation2 perlbrew/0.76")#old samtools module loaded for popoolation2
+module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 ")#load old samtools module loaded for popoolation2 perlbrew/0.76
 here()
 ```
-**parent files pulled from database, merged with picard, sorted and mpiled with bcftools**
+**parent files pulled from database, merged, sorted and mpiled with bcftools**
 ```{r parents NCBI aligned bamfiles from male pool and testpools}
 Rualn_bamDir <- "/output/genomic/plant/Actinidia/chinensis/Resequencing/Alignments/Russell_V2a.chromosomes.and.unassigned"
 Rualn_bams  <- as.data.table(grep(paste('.bam$', collapse = "|"), list.files(path=Rualn_bamDir), invert=FALSE, value=TRUE))
@@ -92,16 +92,16 @@ bsub_cmd     <- glue("bsub -n 8 -o {Ol} -e {Oe} {cmd}")
 ```
 
 ```{r picard merge bams into parent pools keeps read groups for later seperation which i dont want using samtools instead.}
-for (i in unique(parent_bams$pool_parent)){ 
-x       <- parent_bams[pool_parent=={i}, pbams]
-infile  <- str_c(paste("I=", x, sep=""), sep="", collapse=" ")
-outfile <- paste({i}, "_mrgdparents.bam", sep="")
-file.exists(x)
-cmd         <- glue("java -jar /software/bioinformatics/picard-tools-2.9.4/picard.jar MergeSamFiles {infile} O={outfile}")
-Log          <- "92" ;Ol<-paste0(here('QTLseqR/logD/'),Log,".out");Oe<-paste0(here('QTLseqR/logD/'),Log,".err")
-bsub_cmd     <- glue("bsub -n 8 -o {Ol} -e {Oe} {cmd}")
-#system(bsub_cmd)
-}
+# for (i in unique(parent_bams$pool_parent)){ 
+# x       <- parent_bams[pool_parent=={i}, pbams]
+# infile  <- str_c(paste("I=", x, sep=""), sep="", collapse=" ")
+# outfile <- paste({i}, "_mrgdparents.bam", sep="")
+# file.exists(x)
+# cmd         <- glue("java -jar /software/bioinformatics/picard-tools-2.9.4/picard.jar MergeSamFiles {infile} O={outfile}")
+# Log          <- "92" ;Ol<-paste0(here('QTLseqR/logD/'),Log,".out");Oe<-paste0(here('QTLseqR/logD/'),Log,".err")
+# bsub_cmd     <- glue("bsub -n 8 -o {Ol} -e {Oe} {cmd}")
+# #system(bsub_cmd)
+# }
 ```
 
 ```{r samtools 1.9 merge}
@@ -114,10 +114,7 @@ cmd         <- glue("samtools merge -f -r {outfile} {infile}")
 Log          <- "merge92b" ;Ol<-paste0(here('QTLseqR/logD/'),Log,".out");Oe<-paste0(here('QTLseqR/logD/'),Log,".err")
 bsub_cmd     <- glue("bsub -n 8 -o {Ol} -e {Oe} {cmd}")
 system(bsub_cmd)
-}
-
-infile       <- parent_bams[pool_parent=="Russell", pbams]
-outfile <- paste({i}, "_mrgdparents.bam", sep="")
+}                                           
 ```
 
 ```{r sort }
@@ -143,9 +140,9 @@ system(bsub_cmd)
 ```
 
 ```{r run bcftools mpileup}
-#-r 'chr25'
+#-r 'chr25' #
 submit_mpileup <- function(reference = "*.fa.gz", output = c(), bamfiles = c(), job.init = "asub", job.opts = "-q normal") {
-  cmd          <- "bcftools mpileup -B -I -Q 20 -f {reference} --excl-flags 'UNMAP,SECONDARY,QCFAIL,DUP' -a {mpileuptags} {bamfiles} -Ou | bcftools call -f {bcfcalltags} -p {pvalThres} -m -A -Oz -o {output} && bcftools index {output}" 
+  cmd          <- "bcftools mpileup -B -I -Q 20 -f {reference} --excl-flags 'UNMAP,SECONDARY,QCFAIL,DUP' -a {mpileuptags} {bamfiles} -Ou  |bcftools call -f {bcfcalltags} -p {pvalThres} -m -A -Oz -o {output} && bcftools index {output}" 
   tmpf         <- tempfile(pattern = "submit_mileup.", fileext = ".sh")
   writeLines(text = c(glue(cmd)), con = tmpf)
   submit       <- "{job.init} {job.opts} {tmpf}"
@@ -161,6 +158,18 @@ reference      <- dir("/workspace/hrards/projects/hrtcdf/genome/fasta", pattern 
 file.exists(bamfiles)
 file.exists(reference)
 submit_mpileup(reference = reference, output = output, bamfiles = bamfiles)
+```
+
+```{r sort }
+bamin        <- paste("bcfmpile_parents_", parent_bams[, unique(pool_parent)], ".vcf", sep = "")
+output       <- parent_bams[, unique(mrgedparents)]      
+          
+for (i in bamin){
+cmd          <- glue::glue("samtools sort -o {i}_sort.bam {i}.bam")
+Log          <- "si103" ;Ol<-paste0(here('QTLseqR/logD/'),Log,".out");Oe<-paste0(here('QTLseqR/logD/'),Log,".err")
+bsub_cmd     <- glue("bsub -n 8 -o {Ol} -e {Oe} {cmd}")
+system(bsub_cmd)
+}
 ```
 
 ***male pools and sample pools from hrtcdf/github/FSTs/malepool/malepool.Rmd***
@@ -409,6 +418,19 @@ mp  <-  abfiles[, "dir" := "/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/"]
 rm(abfiles, bcfmpile_parents,bcfmpile_mrgdparents, bcfmpile_samples)
 ```
 
+```{r makes a data file for each chromosome for each file, eval=FALSE}
+vcfin   <- mp[,V1]
+chrs   <- c("chr1","chr2","chr3","chr4","chr5","chr6","chr7","chr8","chr9","chr10","chr11","chr12","chr13","chr14","chr15","chr16","chr17","chr18","chr19","chr20","chr21","chr22","chr23","chr24","chr25","chr26","chr27","chr28","chr29")
+for (i in vcfin){
+  for(x in chrs){
+  cmd          <- glue::glue("bcftools query {i} -r '{x}' -e 'INFO/DP<20 || INFO/DP>200' -f '[[%CHROM]]\t%POS\t%REF\t%ALT\t%AD{{0}}\t%AD{{1}}\t%DP[[\t%GQ\t%PL]] \n' -o '{i}_{x}.data'")
+  Log          <- "q47b" ;Ol<-paste0(here('QTLseqR/logD/'),Log,".out");Oe<-paste0(here('QTLseqR/logD/'),Log,".err")
+  bsub_cmd     <- glue("bsub -n 8 -o {Ol} -e {Oe} {cmd}")
+  system(bsub_cmd)
+  }
+}
+```
+
 ##Calculate AF over all pools where high bulk equals parents and samples and male% as low bulks
 ```{r pull data from queried data, eval=FALSE}
 datain <- as.data.table(grep ("[.]vcfdata", list.files(path="."), invert=FALSE, value=TRUE))
@@ -452,9 +474,7 @@ chrs   <- c("chr1","chr2","chr3","chr4","chr5","chr6","chr7","chr8","chr9","chr1
 }
 ```
 
-**Copy from above where high bulk equals parents, samples and male% are tested as low bulks**
-
-**split files for male pools into chromosomes and recombine after filtering for high parent bulks**
+**compare male pool files**
 ```{r bamfiles made in PSApopoolationfiles.Rmd, eval=FALSE}
 bcfmpile_parents     <- as.data.table(grep(paste("bcfmpile_parents"), list.files(path="."), invert=FALSE, value=TRUE))
 bcfmpile_samples     <- as.data.table(grep("bcfmpile_samples", list.files(path="."), invert=FALSE, value=TRUE))
@@ -471,112 +491,106 @@ abfiles <- abfiles[x3=="_chr25",]
 abfiles <-  abfiles[x2=="A1", "malepercentage" := "A1m90"][x2=="B2", "malepercentage" := "B2m75"][x2=="C3", "malepercentage" := "C3m60"][x2=="D6", "malepercentage" := "D6m44"][x2=="E11", "malepercentage" := "E11m80"][x2=="F12", "malepercentage" := "F12m50"][x2=="G13", "malepercentage" := "G13m45"][x2=="H14", "malepercentage" := "H14m68"][x2=="I15", "malepercentage" := "I15m21"][x2=="J16", "malepercentage" := "J16m11"]
 abfiles <-  abfiles[, "dir" := "/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/"]
 mps1 <-     abfiles[malepercentage %in% na.omit(abfiles$malepercentage),]
-mps2 <-     abfiles[V1=="bcfmpile_samples_Russell_chr25.vcf", ][,malepercentage :="Russell"]
-mp  <-     rbind(mps1,mps2)
+#mps2 <-     abfiles[V1=="bcfmpile_samples_Russell_chr25.vcf", ][,malepercentage :="Russell"] #not including russell
+#mp  <-     rbind(mps1,mps2)
+mp <- mps1
 rm(abfiles, bcfmpile_parents,bcfmpile_mrgdparents, bcfmpile_samples, mps1, mps2)
 ```
 
-##Calculate AF over all pools
+##Calculate AF over all male pools to compare between each
 ```{r copied from newer version for individual files, eval=FALSE}
 datain <- as.data.table(grep ("[.]data", list.files(path="."), invert=FALSE, value=TRUE))
 datain <-  datain[, V2 := str_replace_all(V1, "_chr25.vcf_" , "&_chr25.vcf_&")
                  ][, V2 := str_replace_all(V2, ".data" , "&.data")
                  ][, V2 := str_replace_all(V2, "bcfmpile_samples_" , "bcfmpile_samples_&")
                  ][, c("V3", "V4", "V5", "V6", "V7") := tstrsplit(V2, "&", fixed=TRUE)]
-datain <-  unique(datain[, V4])
+datain <-  unique(datain[V4!="Russell", V4])
 
 for (x in datain){
+  for (y in datain){
 dt <-  data.table('s1CHROM'=character(),'s1POS'=integer(),'s1REF'=character(),'s1ALT'=character(),'s1AD0'=integer(),'s1AD1'=integer(),'s1DP'=integer(),'s1GQ'=character(),'s1PL'=character(),'r1CHROM'=character(),'r1POS'=integer(),'r1REF'=character(),'r1ALT'=character(),'r1AD0'=integer(),'r1AD1'=integer(),'r1DP'=integer(),'r1GQ'=character(),'r1PL'=character(),'Cpos'==integer())  
 
 chrs   <- c("chr1","chr2","chr3","chr4","chr5","chr6","chr7","chr8","chr9","chr10","chr11","chr12","chr13","chr14","chr15","chr16","chr17","chr18","chr19","chr20","chr21","chr22","chr23","chr24","chr25","chr26","chr27","chr28","chr29")
 
-  for (i in chrs){
-  s1<- fread(paste0("bcfmpile_samples_",glue({x}), "_chr25.vcf_", glue({i}),".data"), col.names = c('s1CHROM','s1POS','s1REF','s1ALT','s1AD0','s1AD1','s1DP','s1GQ','s1PL'))
-  s1 <- s1[, "Cpos" := str_c(glue({i}), s1POS, sep=".")]
-  setkey(s1, Cpos)
-  r1 <- fread(paste0("bcfmpile_samples_Russell_chr25.vcf_", glue({i}),".data"), col.names = c('r1CHROM','r1POS','r1REF','r1ALT','r1AD0','r1AD1','r1DP','r1GQ','r1PL'))
-  r1 <- r1[, "Cpos" := str_c(glue({i}), r1POS, sep=".")]
-  setkey(r1, Cpos)
-  dt1 <- s1[r1]
-  rm(r1,s1)
-  dt1 <- dt1[!is.na(s1CHROM) & !is.na(r1CHROM),]
-  dt1 <- dt1[s1ALT!="."]
-  dt <- rbind(dt,dt1,fill=TRUE )
-  rm(dt1)
+    for (i in chrs){
+    s1<- fread(paste0("bcfmpile_samples_",glue({x}), "_chr25.vcf_", glue({i}),".data"), col.names = c('s1CHROM','s1POS','s1REF','s1ALT','s1AD0','s1AD1','s1DP','s1GQ','s1PL'))
+    s1 <- s1[, "Cpos" := str_c(glue({i}), s1POS, sep=".")]
+    setkey(s1, Cpos)
+    r1 <- fread(paste0("bcfmpile_samples_",glue({y}), "_chr25.vcf_", glue({i}),".data"), col.names = c('r1CHROM','r1POS','r1REF','r1ALT','r1AD0','r1AD1','r1DP','r1GQ','r1PL'))
+    r1 <- r1[, "Cpos" := str_c(glue({i}), r1POS, sep=".")]
+    setkey(r1, Cpos)
+    dt1 <- s1[r1]
+    rm(r1,s1)
+    dt1 <- dt1[!is.na(s1CHROM) & !is.na(r1CHROM),]
+    dt1 <- dt1[s1ALT!="." | r1ALT!="."]
+    dt <- rbind(dt,dt1,fill=TRUE )
+    rm(dt1)
+    }
+    #SNP-indexper bulk = Alternate allele depth divided by Total read depth
+    dt <-dt[,'s1SNPi':=s1AD1/s1DP][,'r1SNPi':=r1AD1/r1DP]
+
+    #Reference allele frequency = Ref allele depth HighBulk + Ref allele depth LowBulk divided by the Total read depth for both bulks
+    #in this case       REF_FRQ = ref allele depth parent + Ref allele depth xMalePool/  DPrussell + DPxMalePool 
+    dt <-dt[,'REF_FRQ':=((s1AD0+r1AD0)/(s1DP+r1DP))]
+
+    #delta(SNP-index) = SNP-indexHighBulk minus SNP-indexLowBulk
+    dt<-dt[,'deltaSNP':=s1SNPi-r1SNPi]
+    #sapply(dt,class)
+    fwrite(dt, file=paste0(glue({x}),glue({y}), "_malepool_compare.csv"), append=FALSE)
+    rm(dt)
   }
-  #SNP-indexper bulk = Alternate allele depth divided by Total read depth
-  dt <-dt[,'s1SNPi':=s1AD1/s1DP][,'r1SNPi':=r1AD1/r1DP]
-
-  #Reference allele frequency = Ref allele depth HighBulk + Ref allele depth LowBulk divided by the Total read depth for both bulks
-  #in this case       REF_FRQ = ref allele depth parent + Ref allele depth xMalePool/  DPrussell + DPxMalePool
-  dt <-dt[,'REF_FRQ':=((s1AD0+r1AD0)/(s1DP+r1DP))]
-
-  #delta(SNP-index) = SNP-indexHighBulk minus SNP-indexLowBulk
-  dt<-dt[,'deltaSNP':=r1SNPi-s1SNPi]
-  #sapply(dt,class)
-  fwrite(dt, file=paste0(glue({x}), "_malepoolSNPS_highpb.csv"), append=FALSE)
-  rm(dt)
 }
+file.remove("B2A1_malepool_compare.csv", "A1A1_malepool_compare.csv", "A1Russell_malepool_compare.csv", "B2B2_malepool_compare.csv", "B2Russell_malepool_compare.csv", "C3A1_malepool_compare.csv","C3B2_malepool_compare.csv", "C3C3_malepool_compare.csv", "D6A1_malepool_compare.csv", "D6B2_malepool_compare.csv", "D6C3_malepool_compare.csv", "D6D6_malepool_compare.csv", "D6Russell_malepool_compare.csv", "E11A1_malepool_compare.csv", "E11B2_malepool_compare.csv", "E11C3_malepool_compare.csv", "E11D6_malepool_compare.csv", "E11E11_malepool_compare.csv", "E11Russell_malepool_compare.csv", "F12A1_malepool_compare.csv", "F12B2_malepool_compare.csv", "F12C3_malepool_compare.csv", "F12D6_malepool_compare.csv", "F12E11_malepool_compare.csv", "F12F12_malepool_compare.csv", "F12Russell_malepool_compare.csv", "G13A1_malepool_compare.csv", "G13B2_malepool_compare.csv", "G13C3_malepool_compare.csv", "G13D6_malepool_compare.csv", "G13E11_malepool_compare.csv", "G13F12_malepool_compare.csv", "G13G13_malepool_compare.csv", "G13Russell_malepool_compare.csv", "H14A1_malepool_compare.csv", "H14B2_malepool_compare.csv", "H14C3_malepool_compare.csv", "H14D6_malepool_compare.csv", "H14E11_malepool_compare.csv", "H14F12_malepool_compare.csv", "H14G13_malepool_compare.csv", "H14H14_malepool_compare.csv", "H14Russell_malepool_compare.csv", "I15A1_malepool_compare.csv", "I15B2_malepool_compare.csv", "I15C3_malepool_compare.csv", "I15D6_malepool_compare.csv", "I15E11_malepool_compare.csv", "I15F12_malepool_compare.csv", "I15G13_malepool_compare.csv", "I15H14_malepool_compare.csv","I15I15_malepool_compare.csv", "I15Russell_malepool_compare.csv", "J16A1_malepool_compare.csv", "J16B2_malepool_compare.csv", "J16C3_malepool_compare.csv", "J16D6_malepool_compare.csv", "J16E11_malepool_compare.csv", "J16F12_malepool_compare.csv", "J16G13_malepool_compare.csv", "J16H14_malepool_compare.csv","J16J16_malepool_compare.csv", "I15Russell_malepool_compare.csv")
 ```
 
-**split files for whole sample pools into chromosomes and recombine after filtering **
-```{r bamfiles made in PSApopoolationfiles.Rmd, eval=FALSE}
-bcfmpile_parents     <- as.data.table(grep(paste("bcfmpile_parents"), list.files(path="."), invert=FALSE, value=TRUE))
-bcfmpile_samples     <- as.data.table(grep("bcfmpile_samples", list.files(path="."), invert=FALSE, value=TRUE))
-bcfmpile_mrgdparents <- as.data.table(grep("mrgdparents_sort", list.files(path="."), invert=FALSE, value=TRUE))
-abfiles              <- rbindlist(list(bcfmpile_parents,bcfmpile_samples,bcfmpile_mrgdparents))
+**compare sample pool files**
 
-abfiles <- abfiles[, V2 := str_replace_all(V1, ".vcf$" , "&.vcf")
-                 ][, V2 := str_replace_all(V2, "bcfmpile_parents_" , "bcfmpile_parents_&")
-                 ][, V2 := str_replace_all(V2, "bcfmpile_samples_" , "bcfmpile_samples_&")
-                 ][, V2 := str_replace_all(V2, "_chr25" , "&_chr25")
-                 ][, c("V3", "x2", "x3", "x4") := tstrsplit(V2, "&", fixed=TRUE)]
-abfiles <- abfiles[x3=="_chr25",]
-abfiles <- abfiles[, "CKs" := str_extract(x2, "CK")][V1=="bcfmpile_parents_Russell_chr25.vcf", CKs := "CK"][V1=="bcfmpile_samples_Russell_chr25.vcf", CKs := "CK"]
-mp  <-  abfiles[, "dir" := "/powerplant/workspace/hrtcdf/github/FSTs/QTLseqR/"]
-
-rm(abfiles, bcfmpile_parents,bcfmpile_mrgdparents, bcfmpile_samples)
-```
-
-##Calculate AF over all pools
-```{r pull data from queried data, eval=FALSE}
-datain <- as.data.table(grep ("[.]vcfdata", list.files(path="."), invert=FALSE, value=TRUE))
-datain <-  datain[, V2 := str_replace_all(V1, "_chr25.vcfdata" , "&_chr25.vcf_&")
-                 ][, V2 := str_replace_all(V2, "bcfmpile_samples_" , "bcfmpile_samples_&")
+##Calculate AF over all male pools to compare between each - not used since pools are compared with parent bulk.
+```{r copied from newer version for individual files, eval=FALSE}
+datain <- as.data.table(grep ("bcfmpile_samples", list.files(path="."), invert=FALSE, value=TRUE))
+datain <-  datain[, V2 := str_replace_all(V1, "_chr25.vcfdata" , "&_chr25.vcf&")
+][, V2 := str_replace_all(V2, "bcfmpile_samples_" , "bcfmpile_samples_&")                  
+                 ][, V2 := str_replace_all(V2, "chr" , "&_chr")
+                 ][, V2 := str_replace_all(V2, ".data" , "&.data")                   
                  ][, V2 := str_replace_all(V2, "bcfmpile_parents_" , "bcfmpile_parents_&")                   
-                 ][, c("V3", "V4","V5") := tstrsplit(V2, "&", fixed=TRUE)]
-datain <-  unique(datain[, V4])
+                 ][, c("V3", "V4","V5","V6","V7") := tstrsplit(V2, "&", fixed=TRUE)]
+datain <-  datain[ V4=="CK02_01_"| V4=="CK10_02_"| V4=="CK19_03_"| V4=="CK22_01_"| V4=="CK22_03_"| V4=="CK23_08_"| V4=="CK51_01_"| V4=="CK51_09_"| V4=="Russell_",]
+datain <-  unique(datain[is.na(V7)][!is.na(V6), V4])
 
+#	bcfmpile_samples_CK02_01_chr25.vcf_chr1
 for (x in datain){
-dt <-  data.table('s1CHROM'=character(),'s1POS'=integer(),'s1REF'=character(),'s1ALT'=character(),'s1AD0'=integer(),'s1AD1'=integer(),'s1DP'=integer(),'s1GQ'=character(),'s1PL'=character(),'p1CHROM'=character(),'p1POS'=integer(),'p1REF'=character(),'p1ALT'=character(),'p1AD0'=integer(),'p1AD1'=integer(),'p1DP'=integer(),'p1GQ'=character(),'p1PL'=character(),'Cpos'==integer())  
+  for (y in datain){
+dt <-  data.table('s1CHROM'=character(),'s1POS'=integer(),'s1REF'=character(),'s1ALT'=character(),'s1AD0'=integer(),'s1AD1'=integer(),'s1DP'=integer(),'s1GQ'=character(),'s1PL'=character(),'r1CHROM'=character(),'r1POS'=integer(),'r1REF'=character(),'r1ALT'=character(),'r1AD0'=integer(),'r1AD1'=integer(),'r1DP'=integer(),'r1GQ'=character(),'r1PL'=character(),'Cpos'==integer())  
 
 chrs   <- c("chr1","chr2","chr3","chr4","chr5","chr6","chr7","chr8","chr9","chr10","chr11","chr12","chr13","chr14","chr15","chr16","chr17","chr18","chr19","chr20","chr21","chr22","chr23","chr24","chr25","chr26","chr27","chr28","chr29")
 
-  for (i in chrs){
-  s1<- fread(paste0("bcfmpile_samples_",glue({x}), "_chr25.vcf_", glue({i})), col.names = c('s1CHROM','s1POS','s1REF','s1ALT','s1AD0','s1AD1','s1DP','s1GQ','s1PL'))
-  s1 <- s1[, "Cpos" := str_c(glue({i}), s1POS, sep=".")]
-  setkey(s1, Cpos)
-  r1 <- fread(paste0("bcfmpile_parents_",glue({x}), "_chr25.vcf_", glue({i})), col.names = c('r1CHROM','r1POS','r1REF','r1ALT','r1AD0','r1AD1','r1DP','r1GQ','r1PL'))
-  r1 <- r1[, "Cpos" := str_c(glue({i}), r1POS, sep=".")]
-  setkey(r1, Cpos)
-  dt1 <- s1[r1]
-  rm(r1,s1)
-  dt1 <- dt1[!is.na(s1CHROM) & !is.na(r1CHROM),]
-  dt1 <- dt1[s1ALT!="."]
-  dt <- rbind(dt,dt1,fill=TRUE )
-  rm(dt1)
+    for (i in chrs){
+    s1<- fread(paste0("bcfmpile_samples_",glue({x}), "chr25.vcf_", glue({i})), col.names = c('s1CHROM','s1POS','s1REF','s1ALT','s1AD0','s1AD1','s1DP','s1GQ','s1PL'))
+    s1 <- s1[, "Cpos" := str_c(glue({i}), s1POS, sep=".")]
+    setkey(s1, Cpos)
+    r1 <- fread(paste0("bcfmpile_samples_",glue({y}), "chr25.vcf_", glue({i})), col.names = c('r1CHROM','r1POS','r1REF','r1ALT','r1AD0','r1AD1','r1DP','r1GQ','r1PL'))
+    r1 <- r1[, "Cpos" := str_c(glue({i}), r1POS, sep=".")]
+    setkey(r1, Cpos)
+    dt1 <- s1[r1]
+    rm(r1,s1)
+    dt1 <- dt1[!is.na(s1CHROM) & !is.na(r1CHROM),]
+    dt1 <- dt1[s1ALT!="." | r1ALT!="."]
+    dt <- rbind(dt,dt1,fill=TRUE )
+    rm(dt1)
+    }
+    #SNP-indexper bulk = Alternate allele depth divided by Total read depth
+    dt <-dt[,'s1SNPi':=s1AD1/s1DP][,'r1SNPi':=r1AD1/r1DP]
+
+    #Reference allele frequency = Ref allele depth HighBulk + Ref allele depth LowBulk divided by the Total read depth for both bulks
+    #in this case       REF_FRQ = ref allele depth parent + Ref allele depth xMalePool/  DPrussell + DPxMalePool
+    dt <-dt[,'REF_FRQ':=((s1AD0+r1AD0)/(s1DP+r1DP))]
+
+    #delta(SNP-index) = SNP-indexHighBulk minus SNP-indexLowBulk
+    dt<-dt[,'deltaSNP':=s1SNPi-r1SNPi]
+    #sapply(dt,class)
+    fwrite(dt, file=paste0(glue({x}),glue({y}), "_samplepool_compare.csv"), append=FALSE)
+    rm(dt)
   }
-  #SNP-indexper bulk = Alternate allele depth divided by Total read depth
-  dt <-dt[,'s1SNPi':=s1AD1/s1DP][,'r1SNPi':=r1AD1/r1DP]
-
-  #Reference allele frequency = Ref allele depth HighBulk + Ref allele depth LowBulk divided by the Total read depth for both bulks
-  #in this case       REF_FRQ = ref allele depth parent + Ref allele depth xMalePool/  DPrussell + DPxMalePool
-  dt <-dt[,'REF_FRQ':=((s1AD0+r1AD0)/(s1DP+r1DP))]
-
-  #delta(SNP-index) = SNP-indexHighBulk minus SNP-indexLowBulk
-  dt<-dt[,'deltaSNP':=r1SNPi-s1SNPi]
-  #sapply(dt,class)
-  fwrite(dt, file=paste0(glue({x}), "_samplepoolSNPs_highpb.csv"), append=FALSE)
-  rm(dt)
 }
+file.remove("CK02_01_CK02_01__samplepool_compare.csv", "CK10_02_CK02_01__samplepool_compare.csv", "CK10_02_CK10_02__samplepool_compare.csv", "CK19_03_CK02_01__samplepool_compare.csv", "CK19_03_CK10_02__samplepool_compare.csv", "CK19_03_CK19_03__samplepool_compare.csv", "CK22_03_CK02_01__samplepool_compare.csv", "CK22_03_CK10_02__samplepool_compare.csv", "CK22_03_CK19_03__samplepool_compare.csv", "CK22_03_CK22_03__samplepool_compare.csv", "CK23_08_CK02_01__samplepool_compare.csv", "CK23_08_CK10_02__samplepool_compare.csv", "CK23_08_CK19_03__samplepool_compare.csv", "CK23_08_CK22_03__samplepool_compare.csv", "CK23_08_CK23_08__samplepool_compare.csv", "CK51_01_CK02_01__samplepool_compare.csv", "CK51_01_CK10_02__samplepool_compare.csv", "CK51_01_CK19_03__samplepool_compare.csv", "CK51_01_CK22_03__samplepool_compare.csv", "CK51_01_CK23_08__samplepool_compare.csv", "CK51_01_CK51_01__samplepool_compare.csv", "CK51_09_CK02_01__samplepool_compare.csv", "CK51_09_CK10_02__samplepool_compare.csv", "CK51_09_CK22_03__samplepool_compare.csv", "CK51_09_CK23_08__samplepool_compare.csv", "CK51_09_CK51_01__samplepool_compare.csv", "CK51_09_CK51_09__samplepool_compare.csv", "Russell_CK02_01__samplepool_compare.csv", "Russell_CK10_02__samplepool_compare.csv", "Russell_CK19_03__samplepool_compare.csv", "Russell_CK22_03__samplepool_compare.csv", "Russell_CK23_08__samplepool_compare.csv", "Russell_CK51_01__samplepool_compare.csv", "Russell_CK51_09__samplepool_compare.csv", "Russell_Russell__samplepool_compare.csv")
 ```

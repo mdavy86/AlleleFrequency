@@ -314,7 +314,7 @@ BSAsnps <- BSAsnps[, "CHR_POSpercent" := paste0(Chromosome,".",POS/max(POS)), by
 #colours1 <- c("1" = "gold", "2" = "gold3", "3" = "darkolivegreen4", "4" = "darkgreen")
 #shape1 <- c("1" = 15, "2" = 20, "3" = 18, "4" = 8)
 shape1 <- c("1" = 21, "2" = 22, "3" = 23, "4" = 24)
-shape2 <- c("P1_bsa" = 0, "P2_bsa" = 1,"P3_bsa" =2,"P4_bsa"=3, "P9_bsa"= 4, "P10_bsa" = 5,  "P11_bsa" = 6 ,"P12_bsa"=8)
+shape2 <- c("P1_bsa" = 0, "P2_bsa" = 1,"P3_bsa" =2,"P4_bsa"=3, "P9_bsa"= 4, "P10_bsa" = 5,  "P11_bsa" = 6 ,"P12_bsa"=18)
 labels1 <- c("P1_bsa", "P2_bsa", "P3_bsa","P4_bsa", "P9_bsa", "P10_bsa", "P11_bsa" ,"P12_bsa" )
 #BSAsnps_sorted <- BSAsnps[order(-overlap)] #sorts into order so the most frequent sites are plotted last and thus ontop.
 BSAsnps_peakpoint <- BSAsnps[top=="Top 0.5 % SNPs",]
@@ -327,19 +327,19 @@ BSAsnps_peakpoint <- BSAsnps_peakpoint[,parent := factor(BSAsnps_peakpoint$paren
 #BSAsnps_peakpoint <- BSAsnps_peakpoint[,"parent_number" := str_replace_all(parent, "P", "")][,parent_number := str_replace_all(parent_number, "_bsa", "")]
 
 p <- ggplot(data=BSAsnps_peakpoint, aes(x=Chromosome, y=POSmb))+
-geom_point(aes(colour=factor(parent), shape=factor(parent)), na.rm=T, size = 6, stroke = 1, position =position_jitter(seed = 45, width=0.3))+# ,size=BSAsnps_peakpoint[,overlap], , fill=factor(BSAsnps_peakpoint[,parent]), alpha=0.8
+geom_point(aes(colour=factor(parent), shape=factor(parent)), na.rm=T, size = 4, stroke = 1)+# ,size=BSAsnps_peakpoint[,overlap], , fill=factor(BSAsnps_peakpoint[,parent]), alpha=0.8,   , position =position_jitter(seed = 45, width=0.3)
 scale_shape_manual(values=shape2, labels=labels1) +
 scale_colour_viridis_d(labels=labels1) +
   #scale_fill_viridis_d(guide="none") +
 #guides(size=guide_legend(order=1), shape=guide_legend(order=1), color= guide_legend(order=2))+
-#theme_bw()+
-theme(plot.title =element_text(color = "grey20", size = 12, angle = 0, hjust = .5, vjust = 0, face = "plain"),
-  legend.text    =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = .5, face = "plain"),
-  legend.title   =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = 0, face = "plain"),
-  axis.text.x    =element_text(color = "grey20", size = 12, angle = 0, hjust = .5, vjust = 0, face = "plain"),
-  axis.text.y    =element_text(color = "grey20", size = 12, angle = 0, hjust = 0, vjust = 0, face = "plain"),  
-  axis.title.x   =element_text(color = "grey20", size = 12, angle = 0, hjust = .5, vjust = 0, face = "plain"),
-  axis.title.y   =element_text(color = "grey20", size = 12, angle = 90, hjust = .5, vjust = .5, face = "plain"))+
+theme_bw()+
+theme(plot.title =element_text(color = "grey20", size = 11, angle = 0, hjust = .5, vjust = 0, face = "plain"),
+  legend.text    =element_text(color = "grey20", size = 11, angle = 0, hjust = 0, vjust = .5, face = "plain"),
+  legend.title   =element_text(color = "grey20", size = 11, angle = 0, hjust = 0, vjust = 0, face = "plain"),
+  axis.text.x    =element_text(color = "grey20", size = 11, angle = 0, hjust = .5, vjust = 0, face = "plain"),
+  axis.text.y    =element_text(color = "grey20", size = 11, angle = 0, hjust = 0, vjust = 0, face = "plain"),  
+  axis.title.x   =element_text(color = "grey20", size = 11, angle = 0, hjust = .5, vjust = 0, face = "plain"),
+  axis.title.y   =element_text(color = "grey20", size = 11, angle = 90, hjust = .5, vjust = .5, face = "plain"))+
   guides(colour=guide_legend(keywidth=1, keyheight=1, default.unit="cm"), shape=guide_legend(keywidth=1, keyheight=1, default.unit="cm"))+
   #panel.grid = element_blank())+
   #labs(size=str_wrap("Number of QTL overlapping between bulk analyses",17))+

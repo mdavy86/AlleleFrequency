@@ -7,7 +7,7 @@ output:
   word_document: default
 ---
 
-```{r setup, include=FALSE}
+#```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(knitr)
 library(RLinuxModules)
@@ -18,7 +18,9 @@ library(data.table)
 setDTthreads(1)
 module("load openlava asub/2.2 bwa/0.7.12 samtools/1.9 bcftools/1.10.2 popoolation2 perlbrew/0.76")#old samtools module loaded for popoolation2
 here()
-```
+#```
+
+## not working due to problems with @RG in merged bamfiles and mpileup with samtools/0.1.18 which is required for popoolation. moving on to QTLseqR.
 
 ```{r bamfiles made in PSApopoolationfiles.Rmd}
 malepools  <- as.data.table(grep(paste("HW5YYDSXX*"), list.files(path="."), invert=FALSE, value=TRUE))
